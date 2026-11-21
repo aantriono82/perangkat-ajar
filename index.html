@@ -263,6 +263,13 @@
                     <div class="space-y-2">
                         <div class="flex items-center justify-between gap-2"><h3 class="section-title">Agenda kalender</h3><button class="btn btn-primary" onclick="addAgenda()"><i data-lucide="plus" class="w-3.5 h-3.5"></i> Tambah</button></div>
                         <p class="hint text-amber-700">Agenda bertanda "(perkiraan)" belum dari kaldik resmi — cocokkan dengan Keputusan Kadisdikbud Provinsi Lampung No. 400.3.8/1323/V.01/DP.2/2026 dan kaldik sekolah.</p>
+                        <div class="border border-dashed border-slate-300 rounded-lg p-2 space-y-1.5">
+                            <p class="hint">Isi banyak agenda sekaligus lewat Excel: unduh template (berisi agenda saat ini), isi/ubah, lalu impor. Isi file mengganti daftar agenda.</p>
+                            <div class="flex flex-wrap gap-1.5">
+                                <button class="btn" onclick="downloadAgendaTemplate()"><i data-lucide="file-down" class="w-3.5 h-3.5"></i> Unduh Template</button>
+                                <label class="btn"><i data-lucide="file-up" class="w-3.5 h-3.5"></i> Impor Excel<input type="file" class="hidden" accept=".xlsx,.xls,.csv" onchange="importAgendaExcel(event)"></label>
+                            </div>
+                        </div>
                         <div id="ed-agenda"></div>
                     </div>
                 </div>

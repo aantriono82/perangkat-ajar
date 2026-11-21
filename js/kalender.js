@@ -88,6 +88,72 @@ function semesterWeeks(tingkat, sem) {
     return weeks;
 }
 
+// ---------- Koreksi manual minggu efektif per bulan ----------
+// appState.mingguOverride["VII|1"]["7"] = { efektif?: number, ket?: string }  (kunci = indeks bulan 0..11)
+function mingguOverrideKey(tingkat, sem) { return tingkat + '|' + sem; }
+function mingguOverrideOf(tingkat, sem, m) {
+    const o = ((appState.mingguOverride || {})[mingguOverrideKey(tingkat, sem)] || {})[m];
+    return isPlainObject(o) ? o : null;
+}
+const MANUAL_TIDAK_EFEKTIF = 'Kegiatan sekolah lainnya';
+
+// Minggu semester setelah koreksi manual per bulan:
+//  • Jumlah minggu (total) diturunkan → minggu terakhir bulan itu dibuang; dinaikkan → minggu
+//    tambahan (efektif) ditambahkan di akhir bulan.
+//  • Jumlah minggu efektif diturunkan → minggu dengan hari efektif paling sedikit dijadikan tidak
+//    efektif; dinaikkan → minggu tidak efektif dengan hari efektif paling banyak dijadikan efektif.
+// Setiap minggu diberi autoEf = status efektif sebelum koreksi jumlah efektif.
+const hasNum = v => v !== undefined && v !== null && v !== '' && Number.isFinite(Number(v));
+function semesterWeeksFinal(tingkat, sem) {
+    const base = semesterWeeks(tingkat, sem);
+    const ovAll = (appState.mingguOverride || {})[mingguOverrideKey(tingkat, sem)];
+    if (!ovAll || !Object.keys(ovAll).length) return base;
+    const schoolDays = schoolDayNumbers().length;
+    const out = [];
+    semesterMonths(sem).forEach(({ y, m }) => {
+        let ws = base.filter(w => w.y === y && w.m === m).map(w => Object.assign({}, w));
+        const o = mingguOverrideOf(tingkat, sem, m) || {};
+        if (hasNum(o.total)) {
+            const total = Math.max(0, Math.min(6, Math.round(Number(o.total))));
+            if (total < ws.length) ws = ws.slice(0, total);
+            const firstMonday = Date.UTC(y, m, 1) / DAY_MS + ((8 - dayOfWeek(Date.UTC(y, m, 1) / DAY_MS)) % 7);
+            while (ws.length < total) {
+                const prev = ws[ws.length - 1];
+                const monday = prev ? prev.monday + 7 : firstMonday;
+                const n = ws.length + 1;
+                ws.push({
+                    key: `${y}-${String(m + 1).padStart(2, '0')}-m${n}`, monday, y, m, mingguKe: n,
+                    efektifDays: schoolDays, efektif: true, primary: null, blockerIds: [], manual: true, tambahan: true
+                });
+            }
+        }
+        ws.forEach(w => { w.autoEf = w.efektif; });
+        if (hasNum(o.efektif)) {
+            const target = Math.max(0, Math.min(ws.length, Math.round(Number(o.efektif))));
+            let cur = ws.filter(w => w.efektif).length;
+            const ket = (o.ket || '').trim();
+            if (target < cur) {
+                // hari efektif paling sedikit dulu, lalu yang paling akhir
+                const cand = ws.filter(w => w.efektif).sort((a, b) => a.efektifDays - b.efektifDays || b.monday - a.monday);
+                for (const w of cand) {
+                    if (cur <= target) break;
+                    w.efektif = false; w.manual = true;
+                    if (ket || !w.primary) w.primary = { nama: ket || MANUAL_TIDAK_EFEKTIF };
+                    cur--;
+                }
+            } else if (target > cur) {
+                const cand = ws.filter(w => !w.efektif).sort((a, b) => b.efektifDays - a.efektifDays || a.monday - b.monday);
+                for (const w of cand) {
+                    if (cur >= target) break;
+                    w.efektif = true; w.manual = true; cur++;
+                }
+            }
+        }
+        out.push(...ws);
+    });
+    return out;
+}
+
 function jpPerMinggu(tingkat) { return Math.max(1, Number((appState.kelas[tingkat] || {}).jp) || 5); }
 
 const fmtNum = v => {
@@ -101,13 +167,21 @@ const mingguKeText = list => {
 
 // Ringkasan minggu efektif per bulan + penggunaan minggu tidak efektif
 function mingguEfektif(tingkat, sem) {
-    const weeks = semesterWeeks(tingkat, sem);
+    const weeks = semesterWeeksFinal(tingkat, sem);
     const jp = jpPerMinggu(tingkat);
     const bulan = semesterMonths(sem).map(({ y, m }) => {
         const ws = weeks.filter(w => w.y === y && w.m === m);
         const tidak = ws.filter(w => !w.efektif);
-        const ket = [...new Set(tidak.map(w => w.primary ? w.primary.nama : 'Hari efektif kurang'))];
-        return { y, m, nama: NAMA_BULAN[m], total: ws.length, efektif: ws.length - tidak.length, tidak: tidak.length, keterangan: ket.join('; ') };
+        const autoKet = [...new Set(tidak.map(w => w.primary ? w.primary.nama : 'Hari efektif kurang'))].join('; ');
+        const o = mingguOverrideOf(tingkat, sem, m);
+        const hasKet = !!o && typeof o.ket === 'string';
+        return {
+            y, m, nama: NAMA_BULAN[m], total: ws.length, efektif: ws.length - tidak.length, tidak: tidak.length,
+            keterangan: hasKet ? o.ket : autoKet, autoKeterangan: autoKet,
+            autoTotal: semesterWeeks(tingkat, sem).filter(w => w.y === y && w.m === m).length,
+            autoEfektif: ws.filter(w => w.autoEf === undefined ? w.efektif : w.autoEf).length,
+            manualTotal: !!o && hasNum(o.total), manualEfektif: !!o && hasNum(o.efektif), manualKet: hasKet
+        };
     });
     const total = bulan.reduce((s, b) => s + b.total, 0);
     const efektif = bulan.reduce((s, b) => s + b.efektif, 0);

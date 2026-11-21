@@ -280,9 +280,40 @@ function renderKalSummary() {
         const me = mingguEfektif(t, s);
         return `<div class="mt-2"><div class="text-xs font-bold text-slate-700 mb-1">Kelas ${t} • Semester ${s}</div>
             <div class="stat-row mb-1.5"><div class="stat"><b>${me.efektif}/${me.total}</b><span>minggu efektif</span></div><div class="stat"><b>${me.totalJp} JP</b><span>jam efektif</span></div><div class="stat"><b>${me.tidak}</b><span>minggu tidak efektif</span></div></div>
-            <table class="ed-table"><thead><tr><th>Bulan</th><th>Mgg</th><th>Efektif</th><th>Keterangan</th></tr></thead><tbody>
-            ${me.bulan.map(b => `<tr><td>${b.nama}</td><td>${b.total}</td><td><b>${b.efektif}</b></td><td class="text-[11px] text-slate-500">${ea(b.keterangan)}</td></tr>`).join('')}</tbody></table></div>`;
+            <table class="ed-table kal-table"><colgroup><col style="width:5.4rem"><col style="width:3.9rem"><col style="width:3.9rem"><col></colgroup><thead><tr><th>Bulan</th><th>Mgg</th><th>Efektif</th><th>Keterangan</th></tr></thead><tbody>
+            ${me.bulan.map(b => `<tr><td>${b.nama}</td>
+                <td class="${b.manualTotal ? 'ovr' : ''}"><input class="inp inp-sm kal-ef" type="number" min="0" max="6" value="${b.total}" title="Otomatis dari kalender: ${b.autoTotal} minggu. Ubah bila perlu; kosongkan untuk kembali otomatis." onchange="setMingguOverride(${s},${b.m},'total',this.value)"></td>
+                <td class="${b.manualEfektif ? 'ovr' : ''}"><input class="inp inp-sm kal-ef" type="number" min="0" max="${b.total}" value="${b.efektif}" title="Otomatis: ${b.autoEfektif} minggu efektif. Ubah bila perlu; kosongkan untuk kembali otomatis." onchange="setMingguOverride(${s},${b.m},'efektif',this.value)"></td>
+                <td class="${b.manualKet ? 'ovr' : ''}"><textarea class="inp inp-sm kal-ket" rows="1" placeholder="${ea(b.autoKeterangan || '—')}" title="Kosongkan untuk memakai keterangan otomatis dari agenda" onchange="setMingguOverride(${s},${b.m},'ket',this.value)">${b.manualKet ? ea(b.keterangan) : ''}</textarea></td></tr>`).join('')}</tbody></table>
+            <div class="flex items-center justify-between gap-2 mt-1"><span class="hint">Angka &amp; keterangan bisa diubah manual (kuning = koreksi). Kosongkan untuk kembali ke hitungan otomatis.</span>
+            ${(appState.mingguOverride || {})[mingguOverrideKey(t, s)] ? `<button class="btn" onclick="resetMingguOverride(${s})">${icon('rotate-ccw')} Otomatis</button>` : ''}</div></div>`;
     }).join(''));
+}
+function setMingguOverride(s, m, field, raw) {
+    const key = mingguOverrideKey(appState.tingkat, s);
+    const all = appState.mingguOverride || (appState.mingguOverride = {});
+    const ov = all[key] || (all[key] = {});
+    const o = ov[m] || (ov[m] = {});
+    const val = String(raw).trim();
+    if (field === 'total') {
+        const b = mingguEfektif(appState.tingkat, s).bulan.find(x => x.m === m);
+        const n = val === '' ? null : Math.max(0, Math.min(6, parseInt(val, 10) || 0));
+        if (n === null || (b && n === b.autoTotal)) delete o.total; else o.total = n;
+        if (hasNum(o.efektif) && n !== null && o.efektif > n) o.efektif = n;
+    } else if (field === 'efektif') {
+        const b = mingguEfektif(appState.tingkat, s).bulan.find(x => x.m === m);
+        const n = val === '' ? null : Math.max(0, Math.min(b ? b.total : 6, parseInt(val, 10) || 0));
+        if (n === null || (b && n === b.autoEfektif)) delete o.efektif; else o.efektif = n;
+    } else {
+        if (val === '') delete o.ket; else o.ket = val;
+    }
+    if (!Object.keys(o).length) delete ov[m];
+    if (!Object.keys(ov).length) delete all[key];
+    EDITOR_REFRESH.kalsum(); renderAll();
+}
+function resetMingguOverride(s) {
+    delete (appState.mingguOverride || {})[mingguOverrideKey(appState.tingkat, s)];
+    EDITOR_REFRESH.kalsum(); renderAll();
 }
 function renderAgendaEditor() {
     appState.agenda.sort((a, b) => String(a.mulai).localeCompare(String(b.mulai)) || String(a.selesai).localeCompare(String(b.selesai)));
@@ -314,6 +345,168 @@ function toggleAgendaKelas(i, t, on) {
     EDITOR_REFRESH.kalsum(); renderSoon();
 }
 
+// ---------- Agenda kalender: template Excel & impor ----------
+const AGENDA_HEADER = ['No', 'Tanggal Mulai', 'Tanggal Selesai', 'Nama Agenda', 'Jenis', 'Berlaku Kelas'];
+const JENIS_LABEL_XLS = { libur: 'Libur', kegiatan: 'Kegiatan', info: 'Keterangan' };
+const EXCEL_EPOCH_DAY = 25569; // serial Excel untuk 1970-01-01
+
+function downloadAgendaTemplate() {
+    if (!ensureXLSX()) return;
+    try {
+        const name = buildAgendaTemplate();
+        showToast(`Template diunduh: ${name} (lihat folder Unduhan/Downloads).`, 6000);
+    } catch (err) {
+        console.error(err);
+        showToast('Template gagal dibuat: ' + (err && err.message || err), 8000);
+    }
+}
+function buildAgendaTemplate() {
+    const list = appState.agenda.slice().sort((a, b) => String(a.mulai).localeCompare(String(b.mulai)));
+    const kelasTxt = a => !Array.isArray(a.kelas) || !a.kelas.length || a.kelas.length === TINGKAT.length ? 'Semua' : a.kelas.join(', ');
+    const [y1] = tapelYears();
+    const rows = [AGENDA_HEADER].concat(list.length
+        ? list.map((a, i) => [i + 1, a.mulai, a.selesai || a.mulai, a.nama || '', JENIS_LABEL_XLS[a.jenis] || 'Libur', kelasTxt(a)])
+        : [[1, `${y1}-07-13`, `${y1}-07-17`, 'Masa Pengenalan Lingkungan Sekolah (MPLS)', 'Kegiatan', 'VII']]);
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    // Tanggal ditulis sebagai tanggal Excel (dd/mm/yyyy) agar mudah diubah
+    for (let r = 1; r < rows.length; r++) {
+        [1, 2].forEach(c => {
+            const ref = XLSX.utils.encode_cell({ r, c });
+            const iso = rows[r][c];
+            if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) ws[ref] = { t: 'n', v: isoToDay(iso) + EXCEL_EPOCH_DAY, z: 'dd/mm/yyyy' };
+        });
+    }
+    ws['!cols'] = [{ wch: 5 }, { wch: 14 }, { wch: 14 }, { wch: 60 }, { wch: 12 }, { wch: 16 }];
+    ws['!autofilter'] = { ref: `A1:F${rows.length}` };
+    XLSX.utils.book_append_sheet(wb, ws, 'Agenda');
+
+    const [ya, yb] = tapelYears();
+    const petunjuk = [
+        ['PETUNJUK PENGISIAN TEMPLATE AGENDA KALENDER PENDIDIKAN'],
+        [],
+        ['1.', 'Isi lembar "Agenda": satu baris = satu agenda. Jangan mengubah baris judul (baris 1).'],
+        ['2.', `Tanggal ditulis dd/mm/yyyy, mis. 13/07/${ya}. Tahun pelajaran saat ini ${appState.identitas.tapel || ya + '/' + yb}: Juli–Desember ${ya} dan Januari–Juni ${yb}.`],
+        ['3.', 'Tanggal Selesai boleh dikosongkan untuk agenda satu hari.'],
+        ['4.', 'Jenis: Libur atau Kegiatan (mengurangi hari efektif), Keterangan (hanya dicatat, KBM tetap jalan).'],
+        ['5.', 'Berlaku Kelas: Semua, atau sebutkan kelasnya, mis. "VII" atau "VII, VIII". Boleh juga 7, 8, 9.'],
+        ['6.', 'Baris yang Nama Agenda atau Tanggal Mulai-nya kosong diabaikan. Kolom No boleh dikosongkan.'],
+        ['7.', 'Simpan sebagai .xlsx, lalu di aplikasi: Kalender & Minggu Efektif → Impor Excel. Isi file MENGGANTI daftar agenda di aplikasi.'],
+        [],
+        ['Jenis', 'Keterangan'],
+        ['Libur', 'Libur nasional, cuti bersama, libur semester (merah di kalender)'],
+        ['Kegiatan', 'MPLS, asesmen, pengolahan rapor, dll. — tidak ada KBM (kuning)'],
+        ['Keterangan', 'Hari pertama masuk, peringatan, dll. — KBM tetap jalan (biru)']
+    ];
+    const wsP = XLSX.utils.aoa_to_sheet(petunjuk);
+    wsP['!cols'] = [{ wch: 12 }, { wch: 110 }];
+    XLSX.utils.book_append_sheet(wb, wsP, 'Petunjuk');
+
+    const safe = s => String(s || '').replace(/[\\/:*?"<>|\s]+/g, '_');
+    const name = `Template_Agenda_Kalender_${safe(appState.identitas.tapel) || ya}.xlsx`;
+    XLSX.writeFile(wb, name);
+    return name;
+}
+
+// Tanggal dari sel Excel: serial tanggal, "dd/mm/yyyy", "dd-mm-yyyy", "yyyy-mm-dd", atau "13 Juli 2026"
+function agendaDateFrom(v) {
+    if (v === null || v === undefined || v === '') return '';
+    if (typeof v === 'number' && Number.isFinite(v)) return v > 20000 && v < 80000 ? dayToIso(Math.floor(v) - EXCEL_EPOCH_DAY) : null;
+    const s = String(v).trim();
+    if (!s) return '';
+    const ok = (y, m, d) => {
+        y = Number(y); m = Number(m); d = Number(d);
+        if (y < 100) y += 2000;
+        if (!(m >= 1 && m <= 12 && d >= 1 && d <= 31)) return null;
+        const iso = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        return dayToIso(isoToDay(iso)) === iso ? iso : null;
+    };
+    let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+    if (m) return ok(m[1], m[2], m[3]);
+    m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
+    if (m) return ok(m[3], m[2], m[1]);
+    m = s.match(/^(\d{1,2})\s+([a-z]+)\.?\s+(\d{4})$/i);
+    if (m) {
+        const bi = NAMA_BULAN.findIndex(b => b.toLowerCase().startsWith(m[2].toLowerCase().slice(0, 3)));
+        if (bi >= 0) return ok(m[3], bi + 1, m[1]);
+    }
+    return null;
+}
+function agendaJenisFrom(v) {
+    const s = String(v || '').trim().toLowerCase();
+    if (!s || /^lib/.test(s)) return 'libur';
+    if (/^keg/.test(s)) return 'kegiatan';
+    if (/^(ket|info)/.test(s)) return 'info';
+    return null;
+}
+function agendaKelasFrom(v) {
+    const s = String(v || '').trim().toUpperCase();
+    if (!s || /SEMUA|ALL/.test(s)) return TINGKAT.slice();
+    const map = { '7': 'VII', '8': 'VIII', '9': 'IX', VII: 'VII', VIII: 'VIII', IX: 'IX' };
+    const found = (s.match(/\b(VIII|VII|IX|7|8|9)\b/g) || []).map(x => map[x]);
+    const list = TINGKAT.filter(t => found.includes(t));
+    return list.length ? list : null;
+}
+
+// Ubah larik baris Excel menjadi daftar agenda. Melempar Error bila format salah.
+function parseAgendaRows(aoa) {
+    const norm = c => String(c == null ? '' : c).trim().toLowerCase();
+    const hi = aoa.findIndex(r => r.some(c => /^(nama|agenda|kegiatan)/.test(norm(c))) && r.some(c => /mulai|^tanggal/.test(norm(c))));
+    if (hi < 0) throw new Error('kolom "Tanggal Mulai" dan "Nama Agenda" tidak ditemukan');
+    const h = aoa[hi].map(norm);
+    const col = re => h.findIndex(c => re.test(c));
+    const ci = { mulai: col(/mulai|^tanggal$/), selesai: col(/selesai|sampai|akhir/), nama: col(/^(nama|agenda|kegiatan)/), jenis: col(/^jenis/), kelas: col(/kelas|berlaku/) };
+    const get = (r, k) => ci[k] >= 0 ? r[ci[k]] : '';
+    const out = [], errors = [];
+    aoa.slice(hi + 1).forEach((r, idx) => {
+        const nama = String(get(r, 'nama') == null ? '' : get(r, 'nama')).trim().replace(/\s*\n\s*/g, ' ');
+        const rawMulai = get(r, 'mulai');
+        if (!nama && (rawMulai === '' || rawMulai == null)) return;
+        const line = hi + idx + 2;
+        if (!nama) { errors.push(`baris ${line}: nama agenda kosong`); return; }
+        const mulai = agendaDateFrom(rawMulai);
+        if (!mulai) { errors.push(`baris ${line}: tanggal mulai ${mulai === '' ? 'kosong' : 'tidak terbaca'}`); return; }
+        let selesai = agendaDateFrom(get(r, 'selesai'));
+        if (selesai === null) { errors.push(`baris ${line}: tanggal selesai tidak terbaca`); return; }
+        if (!selesai) selesai = mulai;
+        if (selesai < mulai) { errors.push(`baris ${line}: tanggal selesai sebelum tanggal mulai`); return; }
+        const jenis = agendaJenisFrom(get(r, 'jenis'));
+        if (!jenis) { errors.push(`baris ${line}: jenis "${get(r, 'jenis')}" tidak dikenal (Libur/Kegiatan/Keterangan)`); return; }
+        const kelas = agendaKelasFrom(get(r, 'kelas'));
+        if (!kelas) { errors.push(`baris ${line}: kelas "${get(r, 'kelas')}" tidak dikenal`); return; }
+        out.push({ mulai, selesai, nama, jenis, kelas });
+    });
+    if (errors.length) throw new Error(errors.slice(0, 5).join('; ') + (errors.length > 5 ? ` (+${errors.length - 5} lagi)` : ''));
+    if (!out.length) throw new Error('tidak ada agenda yang terisi');
+    return out;
+}
+
+function importAgendaExcel(event) {
+    const file = event.target.files[0];
+    event.target.value = '';
+    if (!file || !ensureXLSX()) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        let list;
+        try {
+            const wb = XLSX.read(e.target.result, { type: 'array' });
+            const name = wb.SheetNames.find(n => /^agenda$/i.test(n.trim())) || wb.SheetNames[0];
+            list = parseAgendaRows(XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '', raw: true }));
+        } catch (err) { console.error(err); showToast('Impor agenda gagal: ' + (err.message || 'berkas tidak terbaca'), 8000); return; }
+        const [y1, y2] = tapelYears();
+        const awal = `${y1}-07-01`, akhir = `${y2}-06-30`;
+        const luar = list.filter(a => a.selesai < awal || a.mulai > akhir).length;
+        const msg = `File berisi ${list.length} agenda` +
+            (luar ? `.\n\nPERHATIAN: ${luar} agenda di luar tahun pelajaran ${appState.identitas.tapel} (1 Juli ${y1} – 30 Juni ${y2}) dan tidak akan terhitung.` : '.') +
+            `\n\nGanti ${appState.agenda.length} agenda di aplikasi dengan isi file?`;
+        if (!confirm(msg)) return;
+        appState.agenda = list.map(a => Object.assign({ id: uid('ag') }, a));
+        renderAgendaEditor(); EDITOR_REFRESH.kalsum(); renderAll();
+        showToast(`${list.length} agenda kalender diimpor.`);
+    };
+    reader.readAsArrayBuffer(file);
+}
+
 // ---------- Program Semester ----------
 function renderPromesEditor() {
     const t = appState.tingkat, s = appState.semester;
@@ -335,7 +528,7 @@ function renderPromesEditor() {
         <div class="flex gap-1.5"><button class="btn" onclick="resetPromes()" ${mx.hasOverride ? '' : 'disabled style="opacity:.5"'}>${icon('rotate-ccw')} Kembalikan ke otomatis</button></div>
         <div class="grid-scroll"><table class="pm-grid" id="pm-grid">
             <thead><tr><th class="pm-label" rowspan="2">Materi / Kegiatan</th><th rowspan="2">JP</th>${months.map(mo => `<th colspan="${mo.weeks.length || 1}">${NAMA_BULAN[mo.m].slice(0, 3)}</th>`).join('')}</tr>
-            <tr>${months.map(mo => mo.weeks.map(w => `<th title="Senin ${formatTanggalIndo(w.key)}${w.efektif ? '' : ' — tidak efektif: ' + ea(w.primary ? w.primary.nama : '')}">${w.mingguKe}</th>`).join('')).join('')}</tr></thead>
+            <tr>${months.map(mo => mo.weeks.map(w => `<th title="${w.tambahan ? 'Minggu tambahan (koreksi manual)' : 'Senin ' + formatTanggalIndo(w.key)}${w.efektif ? '' : ' — tidak efektif: ' + ea(w.primary ? w.primary.nama : '')}">${w.mingguKe}</th>`).join('')).join('')}</tr></thead>
             <tbody>${mx.rows.map(r => `<tr><td class="pm-label" title="${ea(r.label)}">${ea(r.label.length > 26 ? r.label.slice(0, 25) + '…' : r.label)}</td><td class="sum" data-rowsum="${r.id}">${mx.rowTotals[r.id]}/${r.jp}</td>
                 ${mx.weeks.map(w => { const k = r.id + '|' + w.key; const has = Object.prototype.hasOwnProperty.call(ov, k);
                     return `<td class="${w.efektif ? '' : 'off'} ${has ? 'ovr' : ''}"><input inputmode="numeric" value="${mx.cells[r.id][w.key] || ''}" placeholder="${mx.auto[r.id][w.key] || ''}" data-row="${r.id}" data-week="${w.key}" oninput="setPromesCell(this)"></td>`; }).join('')}</tr>`).join('')}
@@ -526,7 +719,7 @@ function addJurnal() {
 function generateJurnal() {
     const t = appState.tingkat, s = appState.semester;
     const mx = promesMatrix(t, s);
-    const have = new Set(appState.jurnal.filter(j => j.tingkat === t && Number(j.semester) === s).map(j => j.tanggal));
+    const have = new Set(appState.jurnal.filter(j => j.tingkat === t && Number(j.semester) === s).flatMap(j => [j.tanggal, j.minggu]).filter(Boolean));
     const babByRow = {};
     (appState.atp[t][s] || []).forEach(b => { babByRow[b.id + ':m'] = b; babByRow[b.id + ':a'] = b; });
     let added = 0;
@@ -534,7 +727,7 @@ function generateJurnal() {
         if (have.has(w.key)) return;
         const rows = promesMateriOnWeek(mx, w.key);
         if (!rows.length) return;
-        appState.jurnal.push({ id: uid('j'), tingkat: t, semester: s, tanggal: w.key, rombel: defaultRombelName(t), jamKe: '',
+        appState.jurnal.push({ id: uid('j'), tingkat: t, semester: s, tanggal: w.tambahan ? '' : w.key, ...(w.tambahan ? { minggu: w.key } : {}), rombel: defaultRombelName(t), jamKe: '',
             kodeTp: [...new Set(rows.map(r => (babByRow[r.id] || {}).kodeTp).filter(Boolean))].join(', '),
             materi: rows.map(r => r.type === 'ash' ? `Asesmen Sumatif Harian (${(babByRow[r.id] || {}).materi || ''})` : r.label).join('; '),
             kegiatan: '', hadir: '', absen: '', catatan: '' });

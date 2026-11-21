@@ -17,7 +17,7 @@ pratinjau kertas di kanan, lalu Cetak/PDF, Word, atau Excel.
 | 4 | Capaian Pembelajaran | Rasional, tujuan, karakteristik, CP Fase D (Kep. BSKAP 046/H/KR/2025) |
 | 5 | Tujuan Pembelajaran | Tabel TP per elemen (lanskap); bisa diisi massal lewat **template Excel** (Unduh Template → isi → Impor Excel) |
 | 6 | Alur Tujuan Pembelajaran | ATP kelas VII, VIII, IX |
-| 7 | Kalender Pendidikan | Agenda libur/kegiatan, digambar per bulan |
+| 7 | Kalender Pendidikan | Agenda libur/kegiatan, digambar per bulan; agenda bisa diisi massal lewat **template Excel** |
 | 8 | Perhitungan Minggu Efektif | **Otomatis** dari kalender |
 | 9 | Program Tahunan | **Otomatis** dari ATP + minggu tidak efektif |
 | 10 | Program Semester | **JP disebar otomatis** ke minggu efektif, bisa dikoreksi per sel |

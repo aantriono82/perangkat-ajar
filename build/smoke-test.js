@@ -112,6 +112,30 @@ async function download(page, trigger) {
         return { same, before: before.length > 0, auto: auto.length === 2 && auto[0].kode === 'A.1' && auto[0].jp === 8 && auto[1].elemen === 'G', rejected };
     }, fs.readFileSync(tplTp).toString('base64'));
     ok(tpRt.same && tpRt.auto && tpRt.rejected, 'Template TP dibaca ulang (kode otomatis, elemen salah ditolak)');
+    const tplAg = await download(page, () => downloadAgendaTemplate());
+    ok(fs.statSync(tplAg).size > 3000, 'Template Agenda (.xlsx)', path.basename(tplAg));
+    const agRt = await page.evaluate(async b64 => {
+        const wb = XLSX.read(Uint8Array.from(atob(b64), c => c.charCodeAt(0)), { type: 'array' });
+        const list = parseAgendaRows(XLSX.utils.sheet_to_json(wb.Sheets.Agenda, { header: 1, defval: '', raw: true }));
+        const same = list.length === appState.agenda.length && list.every(x => appState.agenda.some(y => y.mulai === x.mulai && (y.selesai || y.mulai) === x.selesai && y.nama === x.nama && y.jenis === x.jenis && y.kelas.join() === x.kelas.join()));
+        const f = parseAgendaRows([['Tanggal Mulai', 'Tanggal Selesai', 'Nama Agenda', 'Jenis', 'Berlaku Kelas'], ['13/07/2026', '', 'MPLS', 'Kegiatan', '7'], ['5 Januari 2027', '2027-01-06', 'Libur', '', 'VIII, IX'], ['', '', '', '', '']]);
+        const fmt = f.length === 2 && f[0].mulai === '2026-07-13' && f[0].selesai === '2026-07-13' && f[0].kelas.join() === 'VII' && f[1].mulai === '2027-01-05' && f[1].jenis === 'libur' && f[1].kelas.join() === 'VIII,IX';
+        let rejected = false; try { parseAgendaRows([['Tanggal Mulai', 'Nama Agenda'], ['31/02/2027', 'X']]); } catch (e) { rejected = true; }
+        return same && fmt && rejected;
+    }, fs.readFileSync(tplAg).toString('base64'));
+    ok(agRt, 'Template Agenda dibaca ulang (format tanggal, kelas, tanggal salah ditolak)');
+    const mgOv = await page.evaluate(() => {
+        const keep = JSON.stringify(appState.mingguOverride || {}), t = appState.tingkat;
+        const base = mingguEfektif(t, 1);
+        appState.mingguOverride = { [t + '|1']: { 7: { total: base.bulan[1].total - 1 }, 9: { total: base.bulan[3].total + 2, efektif: 1, ket: 'Uji' } } };
+        const me = mingguEfektif(t, 1), mx = promesMatrix(t, 1);
+        const okt = me.bulan[3];
+        const res = me.total === base.total + 1 && me.bulan[1].total === base.bulan[1].total - 1 && okt.total === base.bulan[3].total + 2 &&
+            okt.efektif === 1 && okt.keterangan === 'Uji' && mx.weeks.length === me.total && me.tidakEfektif.some(g => g.nama === 'Uji');
+        appState.mingguOverride = JSON.parse(keep);
+        return res;
+    });
+    ok(mgOv, 'Koreksi manual jumlah minggu & minggu efektif per bulan');
 
     console.log('7. PDF cetak bundel');
     await page.evaluate(() => { setDocMode('bundel'); resetZoom(); });

@@ -84,6 +84,7 @@ function createDefaultState() {
         alokasi,
         agenda: defaultAgenda(),
         promesOverride: {},
+        mingguOverride: {},
         modul,
         modulAktif: modul[0].id,
         kktp: { batas: 66, interval: JSON.parse(JSON.stringify(DEFAULT_INTERVAL)), indikator: Object.assign({}, DEFAULT_INDIKATOR) },
@@ -159,6 +160,21 @@ function sanitizeLoadedState(raw) {
     });
     out.agenda = out.agenda.filter(a => isPlainObject(a) && /^\d{4}-\d{2}-\d{2}$/.test(a.mulai || ''))
         .map(a => Object.assign({ id: uid('ag'), selesai: a.mulai, jenis: 'libur', kelas: TINGKAT.slice(), nama: '' }, a));
+    // Koreksi minggu efektif: { "VII|1": { "7": { efektif, ket } } }
+    const mo = {};
+    Object.keys(out.mingguOverride || {}).forEach(k => {
+        if (!/^(VII|VIII|IX)\|[12]$/.test(k) || !isPlainObject(out.mingguOverride[k])) return;
+        Object.keys(out.mingguOverride[k]).forEach(m => {
+            const o = out.mingguOverride[k][m];
+            if (!/^(\d|1[01])$/.test(m) || !isPlainObject(o)) return;
+            const c = {};
+            if (Number.isFinite(Number(o.efektif)) && o.efektif !== null && o.efektif !== '') c.efektif = Math.max(0, Math.min(6, Math.round(Number(o.efektif))));
+            if (Number.isFinite(Number(o.total)) && o.total !== null && o.total !== '') c.total = Math.max(0, Math.min(6, Math.round(Number(o.total))));
+            if (typeof o.ket === 'string') c.ket = o.ket.slice(0, 500);
+            if (Object.keys(c).length) (mo[k] || (mo[k] = {}))[m] = c;
+        });
+    });
+    out.mingguOverride = mo;
     out.modul = out.modul.filter(isPlainObject).map(m => Object.assign({ id: uid('mod'), pertemuan: [], dimensi: [] }, m));
     out.zoom = 1;
     out.sidebarHidden = false;
