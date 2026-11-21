@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perangkat Pembelajaran Matematika SMP</title>
+    <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="img/favicon-32.png" type="image/png" sizes="32x32">
+    <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Perangkat Ajar">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <script>
+        if (/^https?:$/.test(location.protocol)) {
+            var m = document.createElement('link');
+            m.rel = 'manifest'; m.href = 'manifest.webmanifest';
+            document.head.appendChild(m);
+        }
+    </script>
+    <link rel="stylesheet" href="vendor/fonts/fonts.css">
+    <link rel="stylesheet" href="css/tailwind.css">
+    <link rel="stylesheet" href="css/app.css">
+    <style id="dynamic-print-style"></style>
+    <script>
+        (function () {
+            var t = null;
+            try { t = localStorage.getItem('perangkat-theme'); } catch (e) {}
+            if (t === 'dark' || (!t && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            }
+        })();
+        (function () {
+            var root = document.documentElement;
+            function setAppHeight() { if (window.innerHeight) root.style.setProperty('--app-h', window.innerHeight + 'px'); }
+            setAppHeight();
+            window.addEventListener('resize', setAppHeight);
+            window.addEventListener('orientationchange', function () { setTimeout(setAppHeight, 150); });
+            window.addEventListener('pageshow', setAppHeight);
+        })();
+    </script>
+    <script src="vendor/xlsx.full.min.js"></script>
+    <script src="vendor/lucide.min.js"></script>
+</head>
+<body class="app-body h-screen h-[100dvh] flex flex-col overflow-hidden text-slate-800" data-tingkat="IX" data-mview="settings">
+
+    <!-- Bilah atas khusus layar kecil -->
+    <div class="lg:hidden no-print bg-white border-b border-slate-200 px-3 py-2 flex items-center gap-2.5 shrink-0">
+        <button onclick="toggleNavDrawer(true)" class="icon-btn" title="Buka menu"><i data-lucide="menu" class="w-5 h-5"></i></button>
+        <div class="accent-gradient p-1.5 rounded-lg shrink-0"><i data-lucide="book-open-check" class="w-4 h-4 text-white"></i></div>
+        <div class="font-display text-sm text-slate-800 whitespace-nowrap">Perangkat Ajar</div>
+        <span id="nav-mode-pill" class="accent-pill text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase whitespace-nowrap ml-auto">Kelas IX</span>
+    </div>
+
+    <div class="print-layout-wrapper flex-1 flex flex-row overflow-hidden relative min-h-0">
+        <div id="nav-backdrop" onclick="toggleNavDrawer(false)" class="nav-backdrop no-print"></div>
+
+        <!-- Menu utama -->
+        <nav id="app-nav" class="app-nav no-print" aria-label="Menu utama">
+            <div class="nav-brand">
+                <div class="accent-gradient p-2 rounded-xl shadow-sm shrink-0"><i data-lucide="book-open-check" class="w-5 h-5 text-white"></i></div>
+                <div class="nav-label min-w-0">
+                    <div class="font-display text-[13px] text-slate-800 leading-tight">Perangkat Pembelajaran</div>
+                    <div id="nav-school-name" class="text-[11px] text-slate-500 truncate">Nama Sekolah</div>
+                </div>
+            </div>
+
+            <div class="nav-section-label">Kelas aktif</div>
+            <div class="mode-seg-group">
+                <button onclick="withPreviewLoading(() => setTingkat('VII'))" id="seg-t-VII" class="mode-seg" title="Kelas VII">VII</button>
+                <button onclick="withPreviewLoading(() => setTingkat('VIII'))" id="seg-t-VIII" class="mode-seg" title="Kelas VIII">VIII</button>
+                <button onclick="withPreviewLoading(() => setTingkat('IX'))" id="seg-t-IX" class="mode-seg" title="Kelas IX">IX</button>
+            </div>
+            <div class="mode-seg-group" style="margin-top:.35rem">
+                <button onclick="withPreviewLoading(() => setSemester(1))" id="seg-s-1" class="mode-seg" title="Semester 1 (Ganjil)">Smt 1</button>
+                <button onclick="withPreviewLoading(() => setSemester(2))" id="seg-s-2" class="mode-seg" title="Semester 2 (Genap)">Smt 2</button>
+            </div>
+
+            <div class="nav-section-label">Pengaturan</div>
+            <div class="nav-list">
+                <button onclick="openSection('identitas')" id="tab-btn-identitas" class="tab-btn nav-item"><i data-lucide="building-2" class="w-[18px] h-[18px] shrink-0"></i><span class="nav-label">Identitas & Kelas</span></button>
+                <button onclick="openSection('teks')" id="tab-btn-teks" class="tab-btn nav-item"><i data-lucide="file-pen-line" class="w-[18px] h-[18px] shrink-0"></i><span class="nav-label">Pengantar & Landasan</span></button>
+                <button onclick="openSection('kurikulum')" id="tab-btn-kurikulum" class="tab-btn nav-item"><i data-lucide="target" class="w-[18px] h-[18px] shrink-0"></i><span class="nav-label">CP & Tujuan Pembelajaran</span></button>
+                <button onclick="openSection('atp')" id="tab-btn-atp" class="tab-btn nav-item"><i data-lucide="git-branch" class="w-[18px] h-[18px] shrink-0"></i><span class="nav-label">ATP & Prota</span></button>
+                <button onclick="openSection('kalender')" id="tab-btn-kalender" class="tab-btn nav-item"><i data-lucide="calendar-days" class="w-[18px] h-[18px] shrink-0"></i><span class="nav-label">Kalender & Minggu Efektif</span></button>
+                <button onclick="openSection('promes')" id="tab-btn-promes" class="tab-btn nav-item"><i data-lucide="table-2" class="w-[18px] h-[18px] shrink-0"></i><span class="nav-label">Program Semester</span></button>
+                <button onclick="openSection('modul')" id="tab-btn-modul" class="tab-btn nav-item"><i data-lucide="notebook-pen" class="w-[18px] h-[18px] shrink-0"></i><span class="nav-label">Modul Ajar</span></button>
+                <button onclick="openSection('kktp')" id="tab-btn-kktp" class="tab-btn nav-item"><i data-lucide="gauge" class="w-[18px] h-[18px] shrink-0"></i><span class="nav-label">KKTP</span></button>
+                <button onclick="openSection('jurnal')" id="tab-btn-jurnal" class="tab-btn nav-item"><i data-lucide="notebook-tabs" class="w-[18px] h-[18px] shrink-0"></i><span class="nav-label">Jurnal Mengajar</span></button>
+                <button onclick="openSection('nilai')" id="tab-btn-nilai" class="tab-btn nav-item"><i data-lucide="sheet" class="w-[18px] h-[18px] shrink-0"></i><span class="nav-label">Daftar Nilai</span></button>
+
+                <div class="nav-section-label nav-section-sub">Alat</div>
+                <button onclick="installApp()" id="pwa-install-btn" class="nav-item hidden" title="Pasang aplikasi agar bisa dibuka tanpa internet">
+                    <i data-lucide="monitor-down" class="w-[18px] h-[18px] shrink-0"></i><span class="nav-label">Pasang Aplikasi</span>
+                </button>
+                <div class="relative" data-menu>
+                    <button onclick="toggleMenu('menu-data', event)" class="nav-item" title="Data: Backup, Muat, Reset" aria-haspopup="true">
+                        <i data-lucide="database" class="w-[18px] h-[18px] shrink-0"></i><span class="nav-label">Data &amp; Backup</span>
+                        <i data-lucide="chevron-right" class="nav-label w-3.5 h-3.5 ml-auto opacity-50"></i>
+                    </button>
+                    <div id="menu-data" class="menu-panel menu-side hidden">
+                        <div class="px-3 pt-1.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Data</div>
+                        <button onclick="closeMenus(); saveConfigJSON()" class="menu-item">
+                            <span class="menu-icon bg-amber-50 text-amber-600"><i data-lucide="save" class="w-4 h-4"></i></span>
+                            <span><span class="block font-semibold text-slate-800">Backup (.json)</span><span class="block text-[11px] text-slate-500">Simpan semua isian ke berkas</span></span>
+                        </button>
+                        <label class="menu-item">
+                            <span class="menu-icon bg-slate-100 text-slate-600"><i data-lucide="folder-open" class="w-4 h-4"></i></span>
+                            <span><span class="block font-semibold text-slate-800">Muat Backup</span><span class="block text-[11px] text-slate-500">Pulihkan dari berkas .json</span></span>
+                            <input type="file" accept=".json,application/json" class="hidden" onchange="closeMenus(); loadConfigJSON(event)">
+                        </label>
+                        <div class="my-1 border-t border-slate-100"></div>
+                        <button onclick="closeMenus(); resetAllData()" class="menu-item text-rose-700 hover:!bg-rose-50">
+                            <span class="menu-icon bg-rose-50 text-rose-600"><i data-lucide="rotate-ccw" class="w-4 h-4"></i></span>
+                            <span><span class="block font-semibold">Reset ke Data Contoh</span><span class="block text-[11px] text-rose-500/80">Hapus semua isian di browser ini</span></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex-1"></div>
+            <div class="nav-list nav-bottom">
+                <div id="autosave-status" class="autosave-ok nav-autosave"><span class="nav-label">Simpan otomatis aktif</span></div>
+            </div>
+        </nav>
+
+        <!-- Panel pengaturan -->
+        <aside id="left-sidebar" class="settings-panel w-full lg:w-[440px] xl:w-[520px] 2xl:w-[600px] bg-white border-r border-slate-200 flex flex-col min-h-0 no-print shrink-0 z-10">
+            <div class="panel-head">
+                <span id="panel-icon" class="panel-icon"></span>
+                <div class="min-w-0 flex-1">
+                    <h2 id="panel-title" class="text-sm text-slate-900 leading-tight">Identitas & Kelas</h2>
+                    <p id="panel-desc" class="text-[11px] text-slate-500 truncate">Pengaturan</p>
+                </div>
+            </div>
+
+            <div class="sidebar-body flex-1 overflow-y-auto p-3 sm:p-4 space-y-4">
+
+                <!-- IDENTITAS -->
+                <div id="tab-identitas" class="tab-content space-y-4">
+                    <div id="intro-tip" class="relative bg-gradient-to-r from-primary-50 to-primary-50 border border-primary-200 rounded-xl p-3 pr-9 text-xs text-primary-900 space-y-1.5">
+                        <button onclick="dismissIntroTip()" class="absolute top-2 right-2 p-1 rounded-md text-primary-400 hover:text-primary-700 hover:bg-white/70 cursor-pointer" title="Tutup petunjuk"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+                        <div class="font-bold flex items-center gap-1.5 text-primary-800"><i data-lucide="sparkles" class="w-4 h-4 text-primary-600"></i><span>Cara kerja singkat</span></div>
+                        <p class="text-[11px] text-primary-700 leading-relaxed">
+                            Isi identitas, lalu periksa <strong>Kalender</strong> dan <strong>ATP</strong>. Minggu efektif, Program Tahunan, dan Program Semester
+                            dihitung otomatis dari keduanya. Pilih kelas (VII/VIII/IX) dan semester di menu kiri; pilih dokumen di atas pratinjau.
+                        </p>
+                    </div>
+                    <div class="space-y-2.5">
+                        <h3 class="section-title">Sekolah</h3>
+                        <div><label class="field-label mb-1">Nama sekolah (huruf kapital)</label><input class="inp" data-bind="identitas.sekolah"></div>
+                        <div><label class="field-label mb-1">Nama resmi satuan pendidikan</label><input class="inp" data-bind="identitas.namaResmi"></div>
+                        <div class="grid grid-cols-2 gap-2.5">
+                            <div><label class="field-label mb-1">Kabupaten/Kota</label><input class="inp" data-bind="identitas.kabupaten"></div>
+                            <div><label class="field-label mb-1">Tahun pelajaran</label><input class="inp" data-bind="identitas.tapel" data-rerender="kalender" placeholder="2026/2027"></div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2.5">
+                            <div><label class="field-label mb-1">Mata pelajaran</label><input class="inp" data-bind="identitas.mapel"></div>
+                            <div><label class="field-label mb-1">Fase</label><input class="inp" data-bind="identitas.fase"></div>
+                            <div><label class="field-label mb-1">Kurikulum</label><input class="inp" data-bind="identitas.kurikulum"></div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <img id="preview-logo" src="" alt="Logo" class="w-12 h-12 object-contain border border-slate-200 rounded-lg bg-white p-1">
+                            <div class="flex-1">
+                                <label class="field-label mb-1">Logo sekolah (sampul)</label>
+                                <div class="flex gap-1.5">
+                                    <label class="btn"><i data-lucide="upload" class="w-3.5 h-3.5"></i> Unggah<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" onchange="handleLogoUpload(event)"></label>
+                                    <button class="btn" onclick="resetLogo()"><i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Bawaan</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div><label class="field-label mb-1">Judul sampul</label><input class="inp" data-bind="identitas.judulSampul"></div>
+                    </div>
+                    <div class="space-y-2.5">
+                        <h3 class="section-title">Guru & Pengesahan</h3>
+                        <div class="grid grid-cols-2 gap-2.5">
+                            <div><label class="field-label mb-1">Nama guru (bergelar)</label><input class="inp" data-bind="identitas.guru"></div>
+                            <div><label class="field-label mb-1">NIP guru</label><input class="inp" data-bind="identitas.nipGuru"></div>
+                            <div><label class="field-label mb-1">Kepala sekolah</label><input class="inp" data-bind="identitas.kepsek"></div>
+                            <div><label class="field-label mb-1">NIP kepala sekolah</label><input class="inp" data-bind="identitas.nipKepsek"></div>
+                        </div>
+                        <div><label class="field-label mb-1">Jabatan kepala sekolah (baris tanda tangan)</label><input class="inp" data-bind="identitas.jabatanKepsek"></div>
+                        <div class="grid grid-cols-2 gap-2.5">
+                            <div><label class="field-label mb-1">Tempat</label><input class="inp" data-bind="identitas.tempat"></div>
+                            <div><label class="field-label mb-1">Tanggal pengesahan</label><input class="inp" data-bind="identitas.tanggal" placeholder="Juli 2026"></div>
+                            <div><label class="field-label mb-1">Pengawas pembina</label><input class="inp" data-bind="identitas.pengawas"></div>
+                            <div><label class="field-label mb-1">Surel guru</label><input class="inp" data-bind="identitas.email"></div>
+                        </div>
+                        <div><label class="field-label mb-1">Nama MGMP</label><input class="inp" data-bind="identitas.mgmp"></div>
+                    </div>
+                    <div class="space-y-2.5">
+                        <h3 class="section-title">Kelas yang diampu</h3>
+                        <p class="hint">Kelas yang dicentang masuk ke Bundel Lengkap dan sampul. Rombel tampil di identitas dokumen.</p>
+                        <div id="ed-kelas"></div>
+                    </div>
+                    <div class="space-y-2.5">
+                        <h3 class="section-title">Tampilan dokumen</h3>
+                        <div class="grid grid-cols-2 gap-2.5">
+                            <div><label class="field-label mb-1">Ukuran kertas</label>
+                                <select class="inp" data-bind="setting.paper"><option value="A4">A4 (21 × 29,7 cm)</option><option value="F4">F4/Folio (21,5 × 33 cm)</option></select></div>
+                            <div><label class="field-label mb-1">Warna tabel</label>
+                                <select class="inp" data-bind="setting.theme" id="sel-theme"></select></div>
+                            <div><label class="field-label mb-1">Durasi 1 JP (menit)</label><input class="inp" type="number" min="20" max="60" data-type="number" data-bind="setting.menitJp"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PENGANTAR & LANDASAN -->
+                <div id="tab-teks" class="tab-content space-y-4 hidden">
+                    <div class="space-y-2">
+                        <h3 class="section-title">Kata Pengantar</h3>
+                        <p class="hint">Baris yang diawali "- " menjadi daftar bernomor. Tanda otomatis: {mapel} {rombel} {tingkat} {tapel} {kepsek} {pengawas} {namaResmi} {mgmp} {email} {sekolah}.</p>
+                        <textarea class="inp" rows="16" data-bind="pengantar"></textarea>
+                        <button class="btn" onclick="resetPengantar()"><i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Kembalikan teks bawaan</button>
+                    </div>
+                    <div class="space-y-2">
+                        <h3 class="section-title">Landasan Penyusunan</h3>
+                        <p class="hint">Satu dasar hukum per baris. {sekolahTitle} dan {tapel} diganti otomatis.</p>
+                        <textarea class="inp" rows="14" data-bind-lines="landasan"></textarea>
+                    </div>
+                </div>
+
+                <!-- CP & TP -->
+                <div id="tab-kurikulum" class="tab-content space-y-4 hidden">
+                    <div class="space-y-2">
+                        <h3 class="section-title">Capaian Pembelajaran per Elemen</h3>
+                        <p class="hint">Teks CP Fase D sudah terisi sesuai Keputusan Kepala BSKAP No. 046/H/KR/2025. Ubah bila ada pembaruan.</p>
+                        <div id="ed-cp"></div>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between gap-2"><h3 class="section-title">Tujuan Pembelajaran</h3><button class="btn btn-primary" onclick="addTP()"><i data-lucide="plus" class="w-3.5 h-3.5"></i> Tambah TP</button></div>
+                        <div id="ed-tp"></div>
+                    </div>
+                    <div class="space-y-2">
+                        <h3 class="section-title">Catatan di bawah tabel TP</h3>
+                        <textarea class="inp" rows="6" data-bind-lines="tpCatatan"></textarea>
+                    </div>
+                </div>
+
+                <!-- ATP & PROTA -->
+                <div id="tab-atp" class="tab-content space-y-4 hidden"><div id="ed-atp" class="bg-transparent space-y-4"></div></div>
+
+                <!-- KALENDER -->
+                <div id="tab-kalender" class="tab-content space-y-4 hidden">
+                    <div class="space-y-2.5">
+                        <h3 class="section-title">Aturan minggu efektif</h3>
+                        <div class="grid grid-cols-2 gap-2.5">
+                            <div><label class="field-label mb-1">Hari sekolah</label>
+                                <select class="inp" data-bind="setting.hariSekolah" data-type="number"><option value="5">5 hari (Senin–Jumat)</option><option value="6">6 hari (Senin–Sabtu)</option></select></div>
+                            <div><label class="field-label mb-1">Minggu efektif bila hari efektif ≥</label><input class="inp" type="number" min="1" max="6" data-type="number" data-bind="setting.minHariEfektif"></div>
+                        </div>
+                        <p class="hint">Minggu dihitung dari hari Senin dan masuk ke bulan tempat Senin itu berada. Agenda <b>Libur</b> dan <b>Kegiatan</b> mengurangi hari efektif; <b>Keterangan</b> hanya dicatat di kalender.</p>
+                        <div id="kal-summary"></div>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between gap-2"><h3 class="section-title">Agenda kalender</h3><button class="btn btn-primary" onclick="addAgenda()"><i data-lucide="plus" class="w-3.5 h-3.5"></i> Tambah</button></div>
+                        <p class="hint text-amber-700">Agenda bertanda "(perkiraan)" belum dari kaldik resmi — cocokkan dengan Keputusan Kadisdikbud Provinsi Lampung No. 400.3.8/1323/V.01/DP.2/2026 dan kaldik sekolah.</p>
+                        <div id="ed-agenda"></div>
+                    </div>
+                </div>
+
+                <!-- PROMES -->
+                <div id="tab-promes" class="tab-content space-y-4 hidden"><div id="ed-promes" class="space-y-3"></div></div>
+
+                <!-- MODUL -->
+                <div id="tab-modul" class="tab-content space-y-4 hidden"><div id="ed-modul" class="bg-transparent space-y-3"></div></div>
+
+                <!-- KKTP -->
+                <div id="tab-kktp" class="tab-content space-y-4 hidden"><div id="ed-kktp" class="bg-transparent space-y-4"></div></div>
+
+                <!-- JURNAL -->
+                <div id="tab-jurnal" class="tab-content space-y-4 hidden"><div id="ed-jurnal" class="bg-transparent space-y-3"></div></div>
+
+                <!-- NILAI -->
+                <div id="tab-nilai" class="tab-content space-y-4 hidden"><div id="ed-nilai" class="bg-transparent space-y-4"></div></div>
+            </div>
+        </aside>
+
+        <!-- Pratinjau -->
+        <main class="print-main-area relative flex-1 flex flex-col overflow-hidden min-h-0">
+            <div class="bg-white border-b border-slate-200 px-3 py-2 text-xs text-slate-600 no-print shrink-0">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-1.5 min-w-0 w-full md:w-auto md:flex-1 md:min-w-[260px]">
+                        <button onclick="toggleWorkspaceCompact()" id="btn-workspace-compact" class="icon-btn hidden lg:block shrink-0" title="Ciutkan menu &amp; panel">
+                            <i data-lucide="panel-left-close" class="ws-icon-close w-4 h-4"></i>
+                            <i data-lucide="panel-left-open" class="ws-icon-open w-4 h-4"></i>
+                        </button>
+                        <button onclick="withPreviewLoading(() => stepDocMode(-1))" class="icon-btn" title="Dokumen sebelumnya"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+                        <div class="relative flex-1 min-w-0 max-w-[460px]" data-menu>
+                            <button onclick="toggleDocGallery(event)" id="doc-gallery-btn" class="doc-select w-full flex items-center gap-2 text-left" aria-haspopup="true">
+                                <span id="doc-current-icon" class="doc-icon-sm"></span>
+                                <span id="doc-current-label" class="flex-1 min-w-0 truncate">Pilih dokumen</span>
+                                <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 shrink-0"></i>
+                            </button>
+                            <div id="doc-gallery" class="menu-panel doc-gallery hidden"></div>
+                        </div>
+                        <select id="doc-mode-select" onchange="setDocMode(this.value)" class="hidden" aria-hidden="true" tabindex="-1">
+                            <optgroup label="A. Pendahuluan">
+                                <option value="sampul">1. Sampul (Halaman depan)</option>
+                                <option value="pengantar">2. Kata Pengantar</option>
+                                <option value="landasan">3. Landasan Penyusunan (Dasar hukum)</option>
+                            </optgroup>
+                            <optgroup label="B. Kurikulum Fase D">
+                                <option value="cp">4. Capaian Pembelajaran (Rasional, tujuan, karakteristik, CP)</option>
+                                <option value="tp">5. Tujuan Pembelajaran (Per elemen, lanskap)</option>
+                                <option value="atp">6. Alur Tujuan Pembelajaran (Kelas VII, VIII, IX)</option>
+                            </optgroup>
+                            <optgroup label="C. Program (per kelas aktif)">
+                                <option value="kalender">7. Kalender Pendidikan (Semester 1 & 2)</option>
+                                <option value="minggu">8. Perhitungan Minggu Efektif (Otomatis dari kalender)</option>
+                                <option value="prota">9. Program Tahunan (Otomatis dari ATP)</option>
+                                <option value="promes">10. Program Semester (Sebaran JP otomatis)</option>
+                            </optgroup>
+                            <optgroup label="D. Pembelajaran & Asesmen (per kelas aktif)">
+                                <option value="modul">11. Modul Ajar (Pembelajaran Mendalam)</option>
+                                <option value="kktp">12. KKTP (Interval & indikator per TP)</option>
+                                <option value="jurnal">13. Jurnal Mengajar (Semester aktif)</option>
+                                <option value="nilai">14. Daftar Nilai (Per rombel, semester aktif)</option>
+                            </optgroup>
+                            <optgroup label="E. Gabungan">
+                                <option value="bundel">15. Bundel Lengkap (Dokumen 1–12, semua kelas diampu)</option>
+                            </optgroup>
+                        </select>
+                        <button onclick="withPreviewLoading(() => stepDocMode(1))" class="icon-btn" title="Dokumen berikutnya"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                    </div>
+                    <div class="flex items-center gap-2 ml-auto">
+                        <span id="preview-summary-text" class="hidden 2xl:inline-block max-w-[360px] truncate text-slate-500 text-[11px]">Memuat...</span>
+                        <span class="text-[11px] text-slate-500 font-medium tabular-nums whitespace-nowrap px-1"><span class="hidden sm:inline">Hal </span><span id="page-indicator" class="font-semibold text-slate-700">–</span></span>
+                        <div class="relative" data-menu>
+                            <button onclick="toggleMenu('menu-zoom', event)" class="zoom-trigger" title="Ukuran tampilan (Ctrl + gulir)" aria-haspopup="true">
+                                <span id="zoom-label" class="tabular-nums">100%</span><i data-lucide="chevron-down" class="w-3.5 h-3.5 opacity-60"></i>
+                            </button>
+                            <div id="menu-zoom" class="menu-panel menu-compact hidden">
+                                <div class="flex items-center gap-1 p-1">
+                                    <button onclick="adjustZoom(-0.1)" class="zoom-step" title="Perkecil"><i data-lucide="minus" class="w-4 h-4"></i></button>
+                                    <button onclick="closeMenus(); resetZoom()" class="zoom-step flex-1 text-xs font-semibold">100%</button>
+                                    <button onclick="adjustZoom(0.1)" class="zoom-step" title="Perbesar"><i data-lucide="plus" class="w-4 h-4"></i></button>
+                                </div>
+                                <div class="my-1 border-t border-slate-100"></div>
+                                <button onclick="closeMenus(); fitZoom()" id="zoom-fit-btn" class="menu-item menu-item-sm"><i data-lucide="move-horizontal" class="w-4 h-4 shrink-0"></i><span class="flex-1">Pas lebar</span></button>
+                                <button onclick="closeMenus(); fitPageZoom()" id="zoom-page-btn" class="menu-item menu-item-sm"><i data-lucide="scan" class="w-4 h-4 shrink-0"></i><span class="flex-1">Pas satu halaman</span></button>
+                            </div>
+                        </div>
+                        <button onclick="toggleTheme()" class="icon-btn" title="Ganti tema terang / gelap">
+                            <i data-lucide="moon" class="theme-moon w-4 h-4"></i><i data-lucide="sun" class="theme-sun w-4 h-4"></i>
+                        </button>
+                        <div class="relative" data-menu>
+                            <button onclick="toggleMenu('menu-output', event)" class="accent-btn px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 shadow-sm transition active:scale-95 cursor-pointer" aria-haspopup="true" title="Unduh / Cetak">
+                                <i data-lucide="download" class="w-4 h-4"></i><span class="hidden sm:inline">Unduh</span><i data-lucide="chevron-down" class="w-3.5 h-3.5 opacity-80"></i>
+                            </button>
+                            <div id="menu-output" class="menu-panel hidden">
+                                <button onclick="closeMenus(); printPDF()" class="menu-item">
+                                    <span class="menu-icon bg-rose-50 text-rose-600"><i data-lucide="printer" class="w-4 h-4"></i></span>
+                                    <span><span class="block font-semibold text-slate-800">Cetak / PDF</span><span class="block text-[11px] text-slate-500">Hasil paling presisi</span></span>
+                                </button>
+                                <button onclick="closeMenus(); exportWord()" class="menu-item">
+                                    <span class="menu-icon bg-blue-50 text-blue-600"><i data-lucide="file-text" class="w-4 h-4"></i></span>
+                                    <span><span class="block font-semibold text-slate-800">Word (.docx)</span><span class="block text-[11px] text-slate-500">Dokumen yang sedang tampil</span></span>
+                                </button>
+                                <button onclick="closeMenus(); exportExcelOutput()" class="menu-item">
+                                    <span class="menu-icon bg-emerald-50 text-emerald-600"><i data-lucide="sheet" class="w-4 h-4"></i></span>
+                                    <span><span class="block font-semibold text-slate-800">Excel (.xlsx)</span><span class="block text-[11px] text-slate-500">TP, ATP, Prota, Promes, Nilai, Jurnal</span></span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="preview-loading" class="preview-loading no-print" aria-live="polite">
+                <div class="preview-loading-card"><span class="spinner"></span> Menyiapkan dokumen…</div>
+            </div>
+            <div id="preview-wrapper" class="preview-canvas flex-1 overflow-auto p-4 pt-10 sm:p-8 sm:pt-12">
+                <div id="sheets-container" class="flex flex-col items-center gap-10 w-fit mx-auto"></div>
+            </div>
+        </main>
+    </div>
+
+    <footer class="app-footer no-print shrink-0 text-slate-500">
+        Made with
+        <svg class="footer-heart" viewBox="0 0 24 24" role="img" aria-label="love"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>
+        by <span class="font-semibold text-slate-700">Aan Triono</span>
+    </footer>
+
+    <nav class="mobile-nav lg:hidden no-print shrink-0 bg-white border-t border-slate-200 grid grid-cols-2 p-1.5 gap-1.5">
+        <button onclick="setMobileView('settings')" id="mview-settings" class="mview-btn"><i data-lucide="sliders-horizontal" class="w-4 h-4"></i> Pengaturan</button>
+        <button onclick="setMobileView('preview')" id="mview-preview" class="mview-btn"><i data-lucide="eye" class="w-4 h-4"></i> Pratinjau</button>
+    </nav>
+
+    <div id="pwa-update" class="pwa-update hidden no-print" role="status">
+        <i data-lucide="refresh-cw" class="w-4 h-4 shrink-0"></i>
+        <span class="flex-1">Versi baru aplikasi tersedia.</span>
+        <button id="pwa-update-reload" class="pwa-update-btn">Muat ulang</button>
+        <button id="pwa-update-close" class="pwa-update-close" title="Nanti saja" aria-label="Tutup"><i data-lucide="x" class="w-4 h-4"></i></button>
+    </div>
+    <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-lg text-xs font-medium flex items-center gap-2 opacity-0 pointer-events-none transition-opacity duration-300 z-50 no-print">
+        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
+        <span id="toast-msg">Berhasil</span>
+    </div>
+
+    <script src="js/assets.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/state.js"></script>
+    <script src="js/image-tools.js"></script>
+    <script src="js/kalender.js"></script>
+    <script src="js/layout.js"></script>
+    <script src="js/render-dasar.js"></script>
+    <script src="js/render-program.js"></script>
+    <script src="js/render-asesmen.js"></script>
+    <script src="js/render-main.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/editors.js"></script>
+    <script src="js/data-io.js"></script>
+    <script src="js/export.js"></script>
+    <script src="js/export-word.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/pwa.js"></script>
+</body>
+</html>

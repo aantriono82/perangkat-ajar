@@ -1,0 +1,97 @@
+# Membuat paket .deb di setiap push/PR (hasil bisa diunduh dari tab Actions → Artifacts),
+# dan menerbitkan GitHub Release berisi .deb setiap kali tag v* didorong, mis.:
+#   git tag v1.0.0 && git push origin v1.0.0
+name: Paket .deb
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Push beruntun ke cabang yang sama: build lama dibatalkan. Build tag rilis tidak pernah dibatalkan.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Berkas hasil build mutakhir (css/tailwind.css & sw.js)
+        run: |
+          npm run build
+          if ! git diff --exit-code --stat -- css/tailwind.css sw.js; then
+            echo "::error::css/tailwind.css atau sw.js belum dibangun ulang. Jalankan 'npm run build' lalu commit hasilnya."
+            exit 1
+          fi
+
+      - name: Uji otomatis
+        run: npm test
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+
+      - name: Tentukan versi
+        id: ver
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION=${GITHUB_REF_NAME#v}
+            if [ "$VERSION" != "$PKG_VERSION" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME tidak cocok dengan versi package.json ($PKG_VERSION)"
+              exit 1
+            fi
+          else
+            # Build uji: tandai dengan nomor run agar tidak tertukar dengan rilis resmi.
+            VERSION="${PKG_VERSION}~dev${GITHUB_RUN_NUMBER}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Buat paket .deb
+        run: npm run build:deb
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          MAINTAINER: ${{ github.repository_owner }} <${{ github.repository_owner }}@users.noreply.github.com>
+
+      - name: Periksa isi paket
+        run: |
+          dpkg-deb -I dist/*.deb
+          dpkg-deb -c dist/*.deb | grep -E 'usr/bin/perangkat-ajar|index.html|\.desktop'
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: perangkat-ajar-deb
+          path: dist/*.deb
+
+      - name: Terbitkan Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.deb \
+            --title "Perangkat Pembelajaran $GITHUB_REF_NAME" \
+            --notes "$(cat <<'NOTES'
+          ## Pasang di Debian/Ubuntu/Mint
+
+          1. Unduh berkas `.deb` di bawah.
+          2. Pasang: `sudo apt install ./perangkat-ajar_*_all.deb`
+          3. Buka **Perangkat Pembelajaran** dari menu aplikasi.
+
+          Butuh Chrome/Chromium/Edge/Brave (atau Firefox). Data versi ini terpisah dari versi browser;
+          pindahkan lewat *Data & Backup → Backup (.json)* lalu *Muat Backup*.
+          NOTES
+          )" \
+            --generate-notes
