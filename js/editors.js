@@ -96,6 +96,126 @@ function removeTP(i) {
     renderTPEditor(); renderKKTPEditor(); renderAll();
 }
 
+// ---------- TP: template Excel & impor ----------
+const TP_HEADER = ['No', 'Elemen', 'Kode TP', 'Tujuan Pembelajaran', 'Materi', 'JP'];
+function downloadTPTemplate() {
+    if (!ensureXLSX()) return;
+    try {
+        const name = buildTPTemplate();
+        showToast(`Template diunduh: ${name} (lihat folder Unduhan/Downloads).`, 6000);
+    } catch (err) {
+        console.error(err);
+        showToast('Template gagal dibuat: ' + (err && err.message || err), 8000);
+    }
+}
+function buildTPTemplate() {
+    const order = ELEMEN.map(e => e.kode);
+    const list = appState.tp.slice().sort((a, b) => order.indexOf(a.elemen) - order.indexOf(b.elemen));
+    const rows = [TP_HEADER].concat(list.length
+        ? list.map((x, i) => [i + 1, x.elemen || '', x.kode || '', x.tujuan || '', x.materi || '', Number(x.jp) || 0])
+        : [[1, 'B', 'B.1', 'Murid dapat ...', 'Nama materi', 10]]);
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 5 }, { wch: 9 }, { wch: 9 }, { wch: 90 }, { wch: 32 }, { wch: 6 }];
+    ws['!autofilter'] = { ref: `A1:F${rows.length}` };
+    XLSX.utils.book_append_sheet(wb, ws, 'TP');
+
+    const petunjuk = [
+        ['PETUNJUK PENGISIAN TEMPLATE TUJUAN PEMBELAJARAN'],
+        [],
+        ['1.', 'Isi lembar "TP": satu baris = satu tujuan pembelajaran. Jangan mengubah baris judul (baris 1).'],
+        ['2.', 'Kolom Elemen diisi kode elemen (lihat daftar di bawah). Boleh juga nama elemennya, mis. "Aljabar".'],
+        ['3.', 'Kolom Kode TP, mis. A.7. Bila dikosongkan, kode dibuat otomatis (elemen + nomor urut).'],
+        ['4.', 'Kolom JP diisi angka (jam pelajaran). Kolom No boleh dikosongkan.'],
+        ['5.', 'Baris yang kolom Tujuan Pembelajaran-nya kosong diabaikan.'],
+        ['6.', 'Simpan sebagai .xlsx, lalu di aplikasi: CP & TP → Impor Excel. Isi file MENGGANTI daftar TP di aplikasi.'],
+        ['7.', 'Kode TP yang sama dengan sebelumnya tetap terhubung ke ATP, KKTP, dan Daftar Nilai.'],
+        [],
+        ['Kode', 'Elemen']
+    ].concat(ELEMEN.map(e => [e.kode, e.nama]));
+    const wsP = XLSX.utils.aoa_to_sheet(petunjuk);
+    wsP['!cols'] = [{ wch: 6 }, { wch: 110 }];
+    XLSX.utils.book_append_sheet(wb, wsP, 'Petunjuk');
+
+    const cpRows = [['Kode', 'Elemen', 'Capaian Pembelajaran (acuan merumuskan TP)']]
+        .concat(ELEMEN.map(e => [e.kode, e.nama, ((appState.cp.capaian || {})[e.kode] || {}).teks || '']));
+    const wsC = XLSX.utils.aoa_to_sheet(cpRows);
+    wsC['!cols'] = [{ wch: 6 }, { wch: 24 }, { wch: 120 }];
+    XLSX.utils.book_append_sheet(wb, wsC, 'Acuan CP');
+
+    const safe = s => String(s || '').replace(/[\\/:*?"<>|\s]+/g, '_');
+    const name = `Template_TP_${safe(appState.identitas.mapel) || 'Mapel'}.xlsx`;
+    XLSX.writeFile(wb, name);
+    return name;
+}
+
+function tpElemenFrom(v) {
+    const s = String(v || '').trim();
+    if (!s) return '';
+    const up = s.toUpperCase();
+    const byKode = ELEMEN.find(e => e.kode === up || up.startsWith(e.kode + ' ') || up.startsWith(e.kode + '–') || up.startsWith(e.kode + '-'));
+    if (byKode) return byKode.kode;
+    const byNama = ELEMEN.find(e => e.nama.toLowerCase() === s.toLowerCase() || s.toLowerCase().includes(e.nama.toLowerCase()));
+    return byNama ? byNama.kode : '';
+}
+
+// Ubah larik baris Excel (header di baris mana pun) menjadi daftar TP. Melempar Error bila format salah.
+function parseTPRows(aoa) {
+    const norm = c => String(c == null ? '' : c).trim().toLowerCase();
+    const hi = aoa.findIndex(r => r.some(c => /^tujuan/.test(norm(c))));
+    if (hi < 0) throw new Error('kolom "Tujuan Pembelajaran" tidak ditemukan');
+    const h = aoa[hi].map(norm);
+    const col = re => h.findIndex(c => re.test(c));
+    const ci = { elemen: col(/^elemen/), kode: col(/^kode/), tujuan: col(/^tujuan/), materi: col(/^materi/), jp: col(/^(jp|jam|alokasi)/) };
+    const get = (r, k) => ci[k] >= 0 ? String(r[ci[k]] == null ? '' : r[ci[k]]).trim() : '';
+    const out = [], errors = [], seen = new Set();
+    aoa.slice(hi + 1).forEach((r, idx) => {
+        const tujuan = get(r, 'tujuan').replace(/\s*\n\s*/g, ' ');
+        if (!tujuan) return;
+        const line = hi + idx + 2;
+        let kode = get(r, 'kode').toUpperCase().replace(/\s+/g, '');
+        const elemen = tpElemenFrom(get(r, 'elemen')) || tpElemenFrom(kode.split('.')[0]);
+        if (!elemen) { errors.push(`baris ${line}: elemen tidak dikenal`); return; }
+        if (!kode) {
+            let n = out.filter(x => x.elemen === elemen).length + 1;
+            while (seen.has(`${elemen}.${n}`)) n++;
+            kode = `${elemen}.${n}`;
+        }
+        if (seen.has(kode)) { errors.push(`baris ${line}: kode ${kode} ganda`); return; }
+        seen.add(kode);
+        const jp = Number(String(get(r, 'jp')).replace(',', '.').replace(/[^\d.]/g, ''));
+        out.push({ elemen, kode, tujuan, materi: get(r, 'materi'), jp: Number.isFinite(jp) ? jp : 0 });
+    });
+    if (errors.length) throw new Error(errors.slice(0, 5).join('; ') + (errors.length > 5 ? ` (+${errors.length - 5} lagi)` : ''));
+    if (!out.length) throw new Error('tidak ada TP yang terisi');
+    return out;
+}
+
+function importTPExcel(event) {
+    const file = event.target.files[0];
+    event.target.value = '';
+    if (!file || !ensureXLSX()) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        let list;
+        try {
+            const wb = XLSX.read(e.target.result, { type: 'array' });
+            const name = wb.SheetNames.find(n => /^tp$/i.test(n.trim())) || wb.SheetNames[0];
+            list = parseTPRows(XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' }));
+        } catch (err) { console.error(err); showToast('Impor TP gagal: ' + (err.message || 'berkas tidak terbaca'), 7000); return; }
+        const old = new Map(appState.tp.map(x => [x.kode, x]));
+        const baru = list.filter(x => !old.has(x.kode)).length;
+        const hapus = appState.tp.filter(x => !list.some(y => y.kode === x.kode)).length;
+        const msg = `File berisi ${list.length} TP (${list.length - baru} diperbarui, ${baru} baru` +
+            (hapus ? `, ${hapus} TP lama yang tidak ada di file akan DIHAPUS` : '') + `).\n\nGanti daftar TP dengan isi file?`;
+        if (!confirm(msg)) return;
+        appState.tp = list.map(x => Object.assign({ id: (old.get(x.kode) || {}).id || uid('tp') }, x));
+        renderTPEditor(); renderKKTPEditor(); renderNilaiEditor(); renderAll();
+        showToast(`${list.length} tujuan pembelajaran diimpor.`);
+    };
+    reader.readAsArrayBuffer(file);
+}
+
 // ---------- ATP & Prota ----------
 function atpSummaryHTML(t, s) {
     const r = rencanaSemester(t, s);

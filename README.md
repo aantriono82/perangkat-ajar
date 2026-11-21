@@ -15,7 +15,7 @@ pratinjau kertas di kanan, lalu Cetak/PDF, Word, atau Excel.
 | 2 | Kata Pengantar | Teks dengan tanda otomatis `{rombel}`, `{tapel}`, `{kepsek}`, … |
 | 3 | Landasan Penyusunan | Daftar dasar hukum |
 | 4 | Capaian Pembelajaran | Rasional, tujuan, karakteristik, CP Fase D (Kep. BSKAP 046/H/KR/2025) |
-| 5 | Tujuan Pembelajaran | Tabel TP per elemen (lanskap) |
+| 5 | Tujuan Pembelajaran | Tabel TP per elemen (lanskap); bisa diisi massal lewat **template Excel** (Unduh Template → isi → Impor Excel) |
 | 6 | Alur Tujuan Pembelajaran | ATP kelas VII, VIII, IX |
 | 7 | Kalender Pendidikan | Agenda libur/kegiatan, digambar per bulan |
 | 8 | Perhitungan Minggu Efektif | **Otomatis** dari kalender |

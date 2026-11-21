@@ -99,6 +99,19 @@ async function download(page, trigger) {
     ok(back === 'GURU UJI, S.Pd.', 'Backup dimuat ulang');
     const bad = await page.evaluate(() => { try { sanitizeLoadedState([1, 2]); return 'diterima'; } catch (e) { return 'ditolak'; } });
     ok(bad === 'ditolak', 'Backup tidak sah ditolak');
+    const tplTp = await download(page, () => downloadTPTemplate());
+    ok(fs.statSync(tplTp).size > 3000, 'Template TP (.xlsx)', path.basename(tplTp));
+    const tpRt = await page.evaluate(async b64 => {
+        const before = appState.tp.map(x => x.id + x.kode + x.tujuan).join('|');
+        const wb = XLSX.read(Uint8Array.from(atob(b64), c => c.charCodeAt(0)), { type: 'array' });
+        const aoa = XLSX.utils.sheet_to_json(wb.Sheets.TP, { header: 1, defval: '' });
+        const list = parseTPRows(aoa);
+        const same = list.length === appState.tp.length && list.every(x => appState.tp.some(y => y.kode === x.kode && y.tujuan === x.tujuan && Number(y.jp) === x.jp));
+        const auto = parseTPRows([['Elemen', 'Kode TP', 'Tujuan Pembelajaran', 'Materi', 'JP'], ['Aljabar', '', 'Murid dapat X', 'M', '8'], ['G', 'G.1', 'Murid dapat Y', '', ''], ['', '', '', '', '']]);
+        let rejected = false; try { parseTPRows([['Elemen', 'Tujuan'], ['Z', 'abc']]); } catch (e) { rejected = true; }
+        return { same, before: before.length > 0, auto: auto.length === 2 && auto[0].kode === 'A.1' && auto[0].jp === 8 && auto[1].elemen === 'G', rejected };
+    }, fs.readFileSync(tplTp).toString('base64'));
+    ok(tpRt.same && tpRt.auto && tpRt.rejected, 'Template TP dibaca ulang (kode otomatis, elemen salah ditolak)');
 
     console.log('7. PDF cetak bundel');
     await page.evaluate(() => { setDocMode('bundel'); resetZoom(); });
