@@ -1,6 +1,6 @@
 // Service worker: menyimpan seluruh berkas aplikasi agar bisa dibuka & dipasang tanpa internet.
 // JANGAN edit CACHE_VERSION / PRECACHE manual — jalankan `npm run build:sw` setelah mengubah berkas apa pun.
-const CACHE_VERSION = '74b41347a150';
+const CACHE_VERSION = '9e1461deaad8';
 const PRECACHE = [
     './',
     './index.html',
@@ -46,7 +46,11 @@ const PRECACHE = [
     './vendor/xlsx.full.min.js'
 ];
 
-const CACHE_NAME = 'asesmen-sumatif-' + CACHE_VERSION;
+// Prefiks khusus aplikasi ini. Dulu 'asesmen-sumatif-' (sama dengan aplikasi adm-ujian), sehingga bila
+// kedua aplikasi dibuka di alamat yang sama (mis. localhost:8000) masing-masing menghapus cache yang lain.
+const CACHE_PREFIX = 'perangkat-ajar-';
+const LEGACY_PREFIX = 'asesmen-sumatif-';
+const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
 // Hosting seperti Cloudflare mengalihkan /index.html -> / (307). Respons hasil pengalihan
 // (redirected = true) DITOLAK browser bila dipakai untuk membuka halaman, jadi simpan salinan bersih.
@@ -71,9 +75,15 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys()
-            .then(keys => Promise.all(keys
-                .filter(k => k.startsWith('asesmen-sumatif-') && k !== CACHE_NAME)
-                .map(k => caches.delete(k))))
+            .then(keys => Promise.all(keys.map(async k => {
+                if (k === CACHE_NAME) return;
+                if (k.startsWith(CACHE_PREFIX)) return caches.delete(k);
+                // Cache lama berprefiks bersama: hapus hanya bila milik aplikasi ini (berisi berkas khasnya)
+                if (k.startsWith(LEGACY_PREFIX)) {
+                    const cache = await caches.open(k);
+                    if (await cache.match(new URL('js/kalender.js', self.registration.scope).href)) return caches.delete(k);
+                }
+            })))
             .then(() => self.clients.claim())
     );
 });

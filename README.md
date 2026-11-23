@@ -60,6 +60,11 @@ python3 -m http.server 8000     # atau: npx serve .
 Data tersimpan otomatis di browser (terpisah per browser dan per cara membuka). Pindahkan data dengan
 *Data & Backup → Backup (.json)* lalu *Muat Backup*.
 
+- **Buka di satu tab saja.** Bila aplikasi terbuka di dua tab dan salah satunya menyimpan, tab yang lain berhenti
+  menyimpan otomatis (agar isian tidak saling menimpa) dan menawarkan *Muat data terbaru*.
+- **Data tersimpan rusak** (mis. berkas lama yang diedit manual) dirapikan otomatis saat dibuka. Bila tetap tidak bisa
+  ditampilkan, aplikasi memakai data contoh **tanpa menimpa** data lama dan menawarkan mengunduhnya sebagai `.json`.
+
 **Paket Linux (.deb):** `npm run build:deb` → `dist/perangkat-ajar_<versi>_all.deb`.
 
 **Versi online (Cloudflare):** `npm run build && npm test && npm run deploy:cf` (Worker `perangkat-ajar`;
@@ -106,3 +111,7 @@ npm test             # uji semua dokumen & fitur di Chrome headless (mode offlin
   agar terpotong per baris dengan kepala tabel diulang.
 - Pembagian halaman diukur pada zoom 100% di wadah tersembunyi; selalu periksa hasil dengan `npm test`
   (gagal bila ada lembar yang meluap).
+- Pustaka besar tidak dimuat di `<head>`: SheetJS dimuat di latar sesudah aplikasi siap, docx saat ekspor Word.
+  Pakai `await ensureXLSX()` sebelum memanggil `XLSX`, dan `loadScriptOnce()` (state.js) untuk pustaka baru.
+- Service worker memakai cache berprefiks `perangkat-ajar-` (khusus aplikasi ini) — jangan pakai prefiks
+  bersama dengan aplikasi lain, karena cache berlaku untuk seluruh origin (mis. `localhost:8000`).

@@ -259,8 +259,17 @@ function escapeHtml(str) {
 }
 
 window.addEventListener('load', function () {
-    const restored = loadSavedState();
-    initApp();
+    let restored = loadSavedState();
+    try {
+        initApp();
+    } catch (err) {
+        if (!restored) throw err;
+        // Data tersimpan tidak bisa ditampilkan: jangan biarkan aplikasi macet setiap dibuka.
+        // Data lama TIDAK ditimpa sampai pengguna sempat mengunduhnya.
+        console.error('Data tersimpan gagal ditampilkan:', err);
+        restored = false;
+        offerBrokenStateRecovery(safeStorageGet(STORAGE_KEY), err);
+    }
     switchTab('identitas');
     initNavCollapsed();
     applyIntroTipState();
@@ -272,7 +281,43 @@ window.addEventListener('load', function () {
         resizeTimer = setTimeout(() => { if (zoomFitMode) refreshZoom(); }, 120);
     });
     if (restored) showToast("Data terakhir dipulihkan dari penyimpanan browser.");
+    // Muat pustaka Excel di latar saat browser senggang, agar siap ketika tombol Excel ditekan
+    const preload = () => ensureXLSX().catch(() => {});
+    if ('requestIdleCallback' in window) requestIdleCallback(preload, { timeout: 3000 });
+    else setTimeout(preload, 1500);
 });
+
+function offerBrokenStateRecovery(raw, err) {
+    storagePaused = 'data-rusak';
+    appState = createDefaultState();
+    initApp();
+    setAutosaveStatus('Simpan otomatis ditahan — data lama bermasalah', false);
+    showChoiceDialog({
+        title: 'Data tersimpan tidak dapat dibuka',
+        html: 'Data di browser ini tidak bisa ditampilkan (' + escapeHtml(err && err.message || 'format tidak dikenal') + '). '
+            + 'Aplikasi sementara memakai <b>data contoh</b> dan <b>belum menimpa</b> data lama.<br><br>'
+            + 'Unduh data lama sebagai cadangan (.json) agar bisa diperiksa atau dimuat lagi lewat <i>Data &amp; Backup → Muat Backup</i>.',
+        buttons: [
+            { label: 'Unduh data lama lalu lanjut', value: 'unduh', primary: true },
+            { label: 'Lanjut tanpa mengunduh', value: 'lanjut' }
+        ]
+    }).then(v => {
+        if (v === null) { showToast('Simpan otomatis masih ditahan. Muat ulang halaman untuk memilih lagi.', 6000); return; }
+        if (v === 'unduh' && raw) {
+            const a = document.createElement('a');
+            const url = URL.createObjectURL(new Blob([raw], { type: 'application/json' }));
+            a.href = url;
+            a.download = 'Data_Lama_Perangkat_Ajar.json';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+        storagePaused = null;
+        setAutosaveStatus('Simpan otomatis aktif', true);
+        saveStateNow();
+    });
+}
 
 // Dialog pilihan sederhana (pengganti confirm() yang hanya punya 2 tombol).
 // buttons: [{ label, value, primary }] — mengembalikan Promise berisi value tombol yang diklik.

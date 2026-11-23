@@ -98,8 +98,8 @@ function removeTP(i) {
 
 // ---------- TP: template Excel & impor ----------
 const TP_HEADER = ['No', 'Elemen', 'Kode TP', 'Tujuan Pembelajaran', 'Materi', 'JP'];
-function downloadTPTemplate() {
-    if (!ensureXLSX()) return;
+async function downloadTPTemplate() {
+    if (!(await ensureXLSX())) return;
     try {
         const name = buildTPTemplate();
         showToast(`Template diunduh: ${name} (lihat folder Unduhan/Downloads).`, 6000);
@@ -191,10 +191,10 @@ function parseTPRows(aoa) {
     return out;
 }
 
-function importTPExcel(event) {
+async function importTPExcel(event) {
     const file = event.target.files[0];
     event.target.value = '';
-    if (!file || !ensureXLSX()) return;
+    if (!file || !(await ensureXLSX())) return;
     const reader = new FileReader();
     reader.onload = e => {
         let list;
@@ -350,8 +350,8 @@ const AGENDA_HEADER = ['No', 'Tanggal Mulai', 'Tanggal Selesai', 'Nama Agenda', 
 const JENIS_LABEL_XLS = { libur: 'Libur', kegiatan: 'Kegiatan', info: 'Keterangan' };
 const EXCEL_EPOCH_DAY = 25569; // serial Excel untuk 1970-01-01
 
-function downloadAgendaTemplate() {
-    if (!ensureXLSX()) return;
+async function downloadAgendaTemplate() {
+    if (!(await ensureXLSX())) return;
     try {
         const name = buildAgendaTemplate();
         showToast(`Template diunduh: ${name} (lihat folder Unduhan/Downloads).`, 6000);
@@ -481,10 +481,10 @@ function parseAgendaRows(aoa) {
     return out;
 }
 
-function importAgendaExcel(event) {
+async function importAgendaExcel(event) {
     const file = event.target.files[0];
     event.target.value = '';
-    if (!file || !ensureXLSX()) return;
+    if (!file || !(await ensureXLSX())) return;
     const reader = new FileReader();
     reader.onload = e => {
         let list;
@@ -954,11 +954,11 @@ function applyMuridPaste() {
     renderNilaiEditor(); renderAll();
     showToast(`${rb.murid.length} murid tersimpan di ${rb.nama}.`);
 }
-function importMuridExcel(event) {
+async function importMuridExcel(event) {
     const file = event.target.files[0];
     event.target.value = '';
     const rb = rombelAktif();
-    if (!file || !rb || !ensureXLSX()) return;
+    if (!file || !rb || !(await ensureXLSX())) return;
     const reader = new FileReader();
     reader.onload = e => {
         try {
@@ -982,8 +982,8 @@ function importMuridExcel(event) {
     };
     reader.readAsArrayBuffer(file);
 }
-function downloadNilaiTemplate() {
-    if (!ensureXLSX()) return;
+async function downloadNilaiTemplate() {
+    if (!(await ensureXLSX())) return;
     const rb = rombelAktif();
     const rows = [['NIS', 'Nama', 'L/P']].concat(rb && rb.murid.length ? rb.murid.map(m => [m.nis, m.nama, m.lp]) : [['2425101', 'Nama Murid', 'L']]);
     const wb = XLSX.utils.book_new();

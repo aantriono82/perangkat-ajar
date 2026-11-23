@@ -30,6 +30,8 @@ function loadConfigJSON(event) {
             if (raw && raw._app && raw._app !== 'perangkat-pembelajaran') throw new Error('Berkas ini backup dari aplikasi lain.');
             appState = sanitizeLoadedState(raw);
             initApp();
+            // Memuat backup = pilihan sadar pengguna → simpan walau sebelumnya ditahan
+            if (storagePaused) { storagePaused = null; setAutosaveStatus('Simpan otomatis aktif', true); }
             saveStateNow();
             showToast('Backup berhasil dimuat.');
         } catch (err) {

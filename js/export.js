@@ -12,8 +12,8 @@ function printPDF() {
     }, 150);
 }
 
-function exportExcelOutput() {
-    if (!ensureXLSX()) return;
+async function exportExcelOutput() {
+    if (!(await ensureXLSX())) return;
     flushPendingWork();
     const wb = XLSX.utils.book_new();
     const add = (name, rows, widths) => {

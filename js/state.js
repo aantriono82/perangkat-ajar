@@ -114,9 +114,37 @@ function refreshIcons() {
     if (window.lucide && typeof lucide.createIcons === 'function') lucide.createIcons();
 }
 
-function ensureXLSX() {
+// Muat skrip sekali saja. Janji (promise) disimpan supaya pemanggilan kedua yang datang saat skrip
+// masih diunduh ikut menunggu, bukan langsung dianggap selesai.
+const scriptLoads = new Map();
+function loadScriptOnce(src) {
+    if (scriptLoads.has(src)) return scriptLoads.get(src);
+    const p = new Promise((resolve, reject) => {
+        const el = document.createElement('script');
+        el.src = src;
+        el.dataset.src = src;
+        el.onload = () => resolve();
+        el.onerror = () => {
+            el.remove();
+            scriptLoads.delete(src);
+            reject(new Error(`Pustaka ${src} tidak ditemukan. Pastikan folder "vendor" ikut tersalin bersama index.html.`));
+        };
+        document.head.appendChild(el);
+    });
+    scriptLoads.set(src, p);
+    return p;
+}
+
+// Pustaka Excel (±1 MB) tidak dimuat saat aplikasi dibuka agar tampilan awal lebih cepat;
+// dimuat di latar sesudah aplikasi siap (lihat utils.js) atau saat pertama dibutuhkan.
+const XLSX_SRC = 'vendor/xlsx.full.min.js';
+async function ensureXLSX() {
     if (window.XLSX) return true;
-    showToast('Pustaka Excel belum termuat. Muat ulang halaman.');
+    try {
+        await loadScriptOnce(XLSX_SRC);
+        if (window.XLSX) return true;
+    } catch (err) { console.warn(err); }
+    showToast('Pustaka Excel gagal dimuat. Pastikan folder "vendor" lengkap, lalu muat ulang halaman.', 6000);
     return false;
 }
 
@@ -158,16 +186,64 @@ function sanitizeLoadedState(raw) {
     if (![1, 2].includes(out.semester)) out.semester = 1;
     if (!DOC_THEMES[out.setting.theme]) out.setting.theme = 'navy';
     if (!PAPER_SIZES[out.setting.paper]) out.setting.paper = 'A4';
+    // Larik dari data lama/backup bisa berisi butir rusak (null, angka, field hilang). Satu butir
+    // rusak saja dulu membuat aplikasi macet setiap dibuka, jadi setiap butir dirapikan di sini.
+    const str = v => (typeof v === 'string' || typeof v === 'number') ? String(v) : '';
+    const objs = arr => (Array.isArray(arr) ? arr : []).filter(isPlainObject);
+    const withId = (x, def, prefix) => { const o = Object.assign({}, def, x); if (!o.id) o.id = uid(prefix); return o; };
+    const strArr = arr => (Array.isArray(arr) ? arr : []).filter(x => typeof x === 'string' || typeof x === 'number').map(String);
+    const isIso = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+    out.landasan = strArr(out.landasan);
+    out.tpCatatan = strArr(out.tpCatatan);
+    out.tp = objs(out.tp).map(x => {
+        const o = withId(x, { elemen: '', kode: '', tujuan: '', materi: '', jp: 0 }, 'tp');
+        ['elemen', 'kode', 'tujuan', 'materi'].forEach(k => { o[k] = str(o[k]); });
+        return o;
+    });
     TINGKAT.forEach(t => {
         out.atp[t] = isPlainObject(out.atp[t]) ? out.atp[t] : { 1: [], 2: [] };
         [1, 2].forEach(s => {
-            if (!Array.isArray(out.atp[t][s])) out.atp[t][s] = [];
-            out.atp[t][s].forEach(b => { if (!b.id) b.id = uid('bab'); if (!Array.isArray(b.subbab)) b.subbab = []; });
+            out.atp[t][s] = objs(out.atp[t][s]).map(b => {
+                const o = withId(b, { materi: '', kodeTp: '', ash: 0 }, 'bab');
+                o.subbab = objs(o.subbab).map(x => Object.assign({ nama: '', jp: 0 }, x));
+                return o;
+            });
         });
-        out.alokasi[t] = out.alokasi[t] || { 1: { remidi: 5, cadangan: 5 }, 2: { remidi: 5, cadangan: 5 } };
+        out.alokasi[t] = isPlainObject(out.alokasi[t]) ? out.alokasi[t] : {};
+        [1, 2].forEach(s => { if (!isPlainObject(out.alokasi[t][s])) out.alokasi[t][s] = { remidi: 5, cadangan: 5 }; });
+        if (!isPlainObject(out.kelas[t])) out.kelas[t] = Object.assign({}, fresh.kelas[t]);
     });
-    out.agenda = out.agenda.filter(a => isPlainObject(a) && /^\d{4}-\d{2}-\d{2}$/.test(a.mulai || ''))
-        .map(a => Object.assign({ id: uid('ag'), selesai: a.mulai, jenis: 'libur', kelas: TINGKAT.slice(), nama: '' }, a));
+    out.agenda = objs(out.agenda).filter(a => isIso(a.mulai)).map(a => {
+        const o = withId(a, { nama: '' }, 'ag');
+        if (!isIso(o.selesai) || o.selesai < o.mulai) o.selesai = o.mulai;
+        if (!JENIS_AGENDA[o.jenis]) o.jenis = 'libur';
+        const kelas = Array.isArray(o.kelas) ? o.kelas : typeof o.kelas === 'string' ? o.kelas.split(/[\s,;]+/) : TINGKAT;
+        o.kelas = kelas.map(String).filter(k => TINGKAT.includes(k));
+        o.nama = str(o.nama);
+        return o;
+    });
+    out.rombel = objs(out.rombel).map(r => {
+        const o = withId(r, { nama: '' }, 'rb');
+        o.nama = str(o.nama);
+        if (!TINGKAT.includes(o.tingkat)) o.tingkat = out.tingkat;
+        o.murid = objs(o.murid).map(m => {
+            const mm = withId(m, { nis: '', nama: '', lp: '' }, 'm');
+            ['nis', 'nama', 'lp'].forEach(k => { mm[k] = str(mm[k]); });
+            return mm;
+        });
+        return o;
+    });
+    if (out.rombel.length && !out.rombel.some(r => r.id === out.rombelAktif)) out.rombelAktif = out.rombel[0].id;
+    out.jurnal = objs(out.jurnal).map(j => withId(j, {}, 'j'));
+    const nilai = {};
+    Object.keys(out.nilai).forEach(k => {
+        if (!isPlainObject(out.nilai[k])) return;
+        const box = {};
+        Object.keys(out.nilai[k]).forEach(m => { if (isPlainObject(out.nilai[k][m])) box[m] = out.nilai[k][m]; });
+        nilai[k] = box;
+    });
+    out.nilai = nilai;
+    Object.keys(out.promesOverride).forEach(k => { if (!isPlainObject(out.promesOverride[k])) delete out.promesOverride[k]; });
     // Koreksi minggu efektif: { "VII|1": { "7": { efektif, ket } } }
     const mo = {};
     Object.keys(out.mingguOverride || {}).forEach(k => {
@@ -187,7 +263,13 @@ function sanitizeLoadedState(raw) {
     // data lama (sebelum ada pendekatan per TP) tetap memakai interval untuk semua TP
     out.kktp.tp = isPlainObject(raw.kktp) && isPlainObject(raw.kktp.tp) ? raw.kktp.tp : {};
     out.kktp = sanitizeKKTP(out.kktp, fresh.kktp);
-    out.modul = out.modul.filter(isPlainObject).map(m => Object.assign({ id: uid('mod'), pertemuan: [], dimensi: [] }, m));
+    out.modul = objs(out.modul).map(m => {
+        const o = withId(m, {}, 'mod');
+        o.pertemuan = objs(o.pertemuan);
+        o.dimensi = strArr(o.dimensi);
+        return o;
+    });
+    if (out.modul.length && !out.modul.some(m => m.id === out.modulAktif)) out.modulAktif = out.modul[0].id;
     out.zoom = 1;
     out.sidebarHidden = false;
     return out;
@@ -220,12 +302,33 @@ function sanitizeKKTP(k, def) {
     return k;
 }
 
+// Isi terakhir yang ditulis/dibaca dari penyimpanan: dipakai agar render yang tidak mengubah data
+// tidak menulis ulang seluruh data (termasuk logo) dan agar tab lain tidak dikira mengubah data.
+let lastSavedJson = null;
+// Alasan simpan otomatis dihentikan sementara ('tab-lain' | 'data-rusak'), null = aktif
+let storagePaused = null;
+
+function setAutosaveStatus(text, ok) {
+    const el = document.getElementById('autosave-status');
+    if (!el) return;
+    (el.querySelector('.nav-label') || el).textContent = text;
+    el.classList.toggle('autosave-ok', ok);
+    el.classList.toggle('autosave-err', !ok);
+    el.classList.remove('autosave-flash');
+    el.style.cursor = storagePaused === 'tab-lain' ? 'pointer' : '';
+    el.onclick = storagePaused === 'tab-lain' ? promptOtherTabChange : null;
+}
+
 function saveStateNow() {
     clearTimeout(saveTimer);
     saveTimer = null;
+    if (storagePaused) return;
     const el = document.getElementById('autosave-status');
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+        const json = JSON.stringify(appState);
+        if (json === lastSavedJson) return;
+        localStorage.setItem(STORAGE_KEY, json);
+        lastSavedJson = json;
         if (el) {
             const t = new Date();
             (el.querySelector('.nav-label') || el).textContent = `Tersimpan ${String(t.getHours()).padStart(2, '0')}.${String(t.getMinutes()).padStart(2, '0')}`;
@@ -256,18 +359,61 @@ function safeStorageGet(key) {
     try { return window.localStorage.getItem(key); } catch (err) { return null; }
 }
 
-let otherTabWarned = false;
+// ---------- Aplikasi terbuka di beberapa tab ----------
+// Dulu tab yang terakhir menyimpan menimpa seluruh isian tab lain. Sekarang, begitu tab lain
+// menyimpan data baru, tab ini berhenti menyimpan otomatis sampai pengguna memilih memuat data terbaru.
+let otherTabDialogOpen = false;
 window.addEventListener('storage', e => {
-    if (e.key !== STORAGE_KEY || otherTabWarned) return;
-    otherTabWarned = true;
-    showToast('Aplikasi ini juga terbuka di tab lain. Gunakan satu tab saja agar data tidak saling menimpa.', 9000);
+    if (e.key !== STORAGE_KEY || e.newValue === null || e.newValue === lastSavedJson) return;
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    storagePaused = 'tab-lain';
+    setAutosaveStatus('Tidak menyimpan — data diubah di tab lain (klik)', false);
+    promptOtherTabChange();
 });
+
+function promptOtherTabChange() {
+    if (otherTabDialogOpen || storagePaused !== 'tab-lain') return;
+    otherTabDialogOpen = true;
+    showChoiceDialog({
+        title: 'Data diubah di tab lain',
+        html: 'Aplikasi ini juga terbuka di tab atau jendela lain, dan data baru saja disimpan dari sana. '
+            + 'Agar isian tidak saling menimpa, <b>tab ini berhenti menyimpan otomatis</b>.<br><br>'
+            + '<b>Muat data terbaru</b> = lanjut bekerja di tab ini dengan data dari tab lain '
+            + '(perubahan di tab ini yang belum tersimpan diganti). Sebaiknya gunakan satu tab saja.',
+        buttons: [
+            { label: 'Muat data terbaru', value: 'muat', primary: true },
+            { label: 'Nanti', value: null }
+        ]
+    }).then(v => {
+        otherTabDialogOpen = false;
+        if (v === 'muat') reloadFromStorage();
+    });
+}
+
+function reloadFromStorage() {
+    const raw = safeStorageGet(STORAGE_KEY);
+    try {
+        if (!raw) throw new Error('kosong');
+        const view = { docMode: appState.docMode, tingkat: appState.tingkat, semester: appState.semester };
+        appState = Object.assign(sanitizeLoadedState(JSON.parse(raw)), view);
+    } catch (err) {
+        showToast('Data dari tab lain tidak dapat dibaca.');
+        return;
+    }
+    lastSavedJson = raw;
+    storagePaused = null;
+    setAutosaveStatus('Simpan otomatis aktif', true);
+    initApp();
+    showToast('Data terbaru dari tab lain dimuat.');
+}
 
 function loadSavedState() {
     try {
         const raw = safeStorageGet(STORAGE_KEY);
         if (!raw) return false;
         appState = sanitizeLoadedState(JSON.parse(raw));
+        lastSavedJson = raw;
         return true;
     } catch (err) {
         console.warn('Data tersimpan tidak dapat dibaca:', err);
@@ -278,6 +424,8 @@ function loadSavedState() {
 function resetAllData() {
     if (!confirm('Hapus semua isian di browser ini dan kembali ke data contoh?\n\nTips: simpan dulu lewat Backup (.json) bila masih diperlukan.')) return;
     try { localStorage.removeItem(STORAGE_KEY); } catch (err) {}
+    lastSavedJson = null;
+    if (storagePaused) { storagePaused = null; setAutosaveStatus('Simpan otomatis aktif', true); }
     appState = createDefaultState();
     initApp();
     showToast('Data dikembalikan ke contoh bawaan.');

@@ -357,18 +357,7 @@ async function wordLayoutTable(el, cs, items, ctx, singleRow) {
 // ---------------------------------------------------------------------------
 // Pembuatan berkas .docx
 // ---------------------------------------------------------------------------
-function loadScriptOnce(src) {
-    return new Promise((resolve, reject) => {
-        if (document.querySelector(`script[data-src="${src}"]`)) return resolve();
-        const el = document.createElement('script');
-        el.src = src;
-        el.dataset.src = src;
-        el.onload = () => resolve();
-        el.onerror = () => { el.remove(); reject(new Error(`Pustaka ${src} tidak ditemukan. Pastikan folder "vendor" ikut tersalin bersama index.html.`)); };
-        document.head.appendChild(el);
-    });
-}
-
+// loadScriptOnce() ada di state.js
 async function loadDocxLibraries() {
     if (window.docx && window.docxHtml) return;
     for (const src of WORD_VENDOR_SCRIPTS) await loadScriptOnce(src); // urutan penting

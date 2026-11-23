@@ -40,7 +40,9 @@ async function download(page, trigger) {
     await page.waitForTimeout(1200);
     await page.evaluate(() => { localStorage.clear(); appState = createDefaultState(); initApp(); resetZoom(); });
     await page.waitForTimeout(300);
-    ok(await page.evaluate(() => !!window.XLSX && !!window.lucide), 'Pustaka lokal termuat');
+    // Pustaka Excel sengaja dimuat di latar sesudah aplikasi siap (bukan di <head>)
+    await page.waitForFunction(() => !!window.XLSX, null, { timeout: 10000 }).catch(() => {});
+    ok(await page.evaluate(() => !!window.XLSX && !!window.lucide), 'Pustaka lokal termuat (Excel dimuat di latar)');
 
     console.log('2. Semua dokumen untuk kelas VII, VIII, IX (zoom 100%, tanpa luapan)');
     const docs = await page.evaluate(() => Object.keys(DOCS));
@@ -188,6 +190,118 @@ async function download(page, trigger) {
     ok(await page.evaluate(() => document.querySelectorAll('#sheets-container .print-sheet').length === 2), 'Pratinjau HP');
 
     ok(errors.length === 0, 'Tanpa galat konsol', errors.slice(0, 5).join(' | '));
+
+    console.log('9. Data tersimpan rusak & beberapa tab');
+    {
+        const ctx = await browser.newContext({ offline: true, acceptDownloads: true, viewport: { width: 1400, height: 900 } });
+        const pg = await ctx.newPage();
+        const errs = [];
+        pg.on('pageerror', e => errs.push(e.message));
+        await pg.goto(URL, { waitUntil: 'load' });
+        await pg.waitForTimeout(500);
+        // Butir rusak di larik (data lama / diedit manual) harus dirapikan, bukan membuat aplikasi macet
+        await pg.evaluate(() => {
+            const s = createDefaultState();
+            s.identitas.guru = 'GURU UJI';
+            s.rombel.push(null, 5, { nama: 'IX.Z', tingkat: 'IX' });
+            s.tp.push(null, 'x');
+            s.jurnal = [null, 3, { tingkat: 'IX', semester: 1 }];
+            s.modul.push({ tingkat: 'IX', semester: 1, pertemuan: 'x', dimensi: null });
+            s.agenda.push({ mulai: '2026-08-18', kelas: 'IX', jenis: 'aneh', nama: 'UJI RUSAK' }, null);
+            s.atp.IX[1].push(null, { materi: 'x', subbab: [null, 2] });
+            clearTimeout(saveTimer); saveTimer = null; window.saveStateNow = () => {};
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+        });
+        await pg.reload({ waitUntil: 'load' });
+        await pg.waitForTimeout(800);
+        const san = await pg.evaluate(() => {
+            const bad = [];
+            for (const t of TINGKAT) for (const d of Object.keys(DOCS)) {
+                try { setTingkat(t); setDocMode(d); } catch (e) { bad.push(t + '/' + d + ': ' + e.message); }
+                if (document.querySelector('#sheets-container .empty-state .text-rose-700')) bad.push(t + '/' + d + ': gagal dibuat');
+            }
+            ['identitas', 'kurikulum', 'atp', 'kalender', 'promes', 'modul', 'kktp', 'jurnal', 'nilai'].forEach(x => { try { switchTab(x); } catch (e) { bad.push(x + ': ' + e.message); } });
+            const ag = appState.agenda.find(a => a.nama === 'UJI RUSAK');
+            return { bad, guru: appState.identitas.guru, rombel: appState.rombel.length, ag: ag.jenis + '/' + ag.kelas.join(',') };
+        });
+        ok(san.bad.length === 0 && errs.length === 0 && san.guru === 'GURU UJI' && san.rombel === 3 && san.ag === 'libur/IX',
+            'Butir rusak di data tersimpan dirapikan', JSON.stringify([san.guru, san.rombel, san.ag]) + ' ' + [...san.bad, ...errs].slice(0, 3).join(' | '));
+
+        // Bila tampilan tetap gagal: data lama tidak ditimpa dan bisa diunduh
+        await pg.evaluate(() => {
+            clearTimeout(saveTimer); saveTimer = null;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.assign(createDefaultState(), { identitas: { guru: 'DATA LAMA' } })));
+        });
+        await pg.addInitScript(() => { window.__breakOnce = !sessionStorage.getItem('broke'); sessionStorage.setItem('broke', '1'); });
+        await pg.addInitScript(() => window.addEventListener('load', () => {
+            if (!window.__breakOnce) return;
+            const orig = window.renderAllEditors;
+            window.renderAllEditors = function () { if (appState.identitas.guru === 'DATA LAMA') throw new Error('uji rusak'); return orig.apply(this, arguments); };
+        }, { capture: true }));
+        await pg.reload({ waitUntil: 'load' });
+        await pg.waitForTimeout(600);
+        const kept = await pg.evaluate(() => JSON.parse(localStorage.getItem(STORAGE_KEY)).identitas.guru === 'DATA LAMA' && storagePaused === 'data-rusak'
+            && !!document.querySelector('[role="dialog"]'));
+        const dl = pg.waitForEvent('download', { timeout: 10000 });
+        await pg.click('[role="dialog"] button:has-text("Unduh data lama")');
+        const d = await dl;
+        await pg.waitForTimeout(200);
+        const after = await pg.evaluate(() => storagePaused === null && JSON.parse(localStorage.getItem(STORAGE_KEY)).identitas.guru !== 'DATA LAMA');
+        ok(kept && after && /Data_Lama/.test(d.suggestedFilename()), 'Data yang gagal ditampilkan tidak ditimpa & bisa diunduh');
+
+        // Dua tab: tab yang tertinggal berhenti menyimpan, lalu bisa memuat data terbaru
+        const pg2 = await ctx.newPage();
+        await pg2.goto(URL, { waitUntil: 'load' });
+        await pg2.waitForTimeout(600);
+        await pg.evaluate(() => { flushPendingWork(); });
+        await pg2.evaluate(() => { appState.identitas.guru = 'DARI TAB 2'; saveStateNow(); });
+        await pg.waitForTimeout(300);
+        const paused = await pg.evaluate(() => {
+            appState.identitas.guru = 'TAB 1 BASI'; saveStateNow();
+            return storagePaused === 'tab-lain' && JSON.parse(localStorage.getItem(STORAGE_KEY)).identitas.guru === 'DARI TAB 2';
+        });
+        await pg.click('[role="dialog"] button:has-text("Muat data terbaru")');
+        await pg.waitForTimeout(300);
+        const reloaded = await pg.evaluate(() => storagePaused === null && appState.identitas.guru === 'DARI TAB 2');
+        ok(paused && reloaded, 'Dua tab tidak saling menimpa data');
+        await ctx.close();
+    }
+
+    console.log('10. Service worker & mode offline (lewat http)');
+    {
+        const http = require('http');
+        const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.webmanifest': 'application/manifest+json',
+            '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
+        const server = http.createServer((req, res) => {
+            const rel = decodeURIComponent(new globalThis.URL(req.url, 'http://x').pathname).replace(/^\/+/, '') || 'index.html';
+            const file = path.join(ROOT, rel);
+            if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end(); }
+            res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' });
+            fs.createReadStream(file).pipe(res);
+        });
+        await new Promise(r => server.listen(0, '127.0.0.1', r));
+        const base = `http://127.0.0.1:${server.address().port}/`;
+        const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+        const pg = await ctx.newPage();
+        const errs = [];
+        pg.on('pageerror', e => errs.push(e.message));
+        await pg.goto(base, { waitUntil: 'load' });
+        // Cache milik aplikasi lain (adm-ujian, prefiks lama yang sama) tidak boleh ikut terhapus
+        await pg.evaluate(async () => { const c = await caches.open('asesmen-sumatif-lain'); await c.put('/ujian/js/render-peserta.js', new Response('x')); });
+        await pg.evaluate(() => navigator.serviceWorker.ready);
+        await pg.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 15000 }).catch(() => {});
+        const keys = await pg.evaluate(() => caches.keys());
+        await ctx.setOffline(true);
+        await pg.reload({ waitUntil: 'load' });
+        await pg.waitForTimeout(800);
+        const offlineOk = await pg.evaluate(() => document.querySelectorAll('#sheets-container .print-sheet').length > 0);
+        const xlsxOffline = await pg.evaluate(() => ensureXLSX());
+        ok(keys.some(k => /^perangkat-ajar-/.test(k)) && keys.includes('asesmen-sumatif-lain'), 'Cache SW khusus aplikasi ini', keys.join(', '));
+        ok(offlineOk && xlsxOffline && errs.length === 0, 'Dibuka ulang tanpa internet lewat service worker', errs.slice(0, 3).join(' | '));
+        await ctx.close();
+        server.close();
+    }
+
     await browser.close();
     console.log(failures ? `\n${failures} pemeriksaan GAGAL` : '\nSemua pemeriksaan lulus');
     process.exit(failures ? 1 : 0);
