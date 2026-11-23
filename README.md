@@ -22,9 +22,9 @@ pratinjau kertas di kanan, lalu Cetak/PDF, Word, atau Excel.
 | 9 | Program Tahunan | **Otomatis** dari ATP + minggu tidak efektif |
 | 10 | Program Semester | **JP disebar otomatis** ke minggu efektif, bisa dikoreksi per sel |
 | 11 | Modul Ajar | Format Pembelajaran Mendalam (identifikasi, desain, pengalaman belajar, asesmen) |
-| 12 | KKTP | Interval nilai + indikator per TP |
+| 12 | KKTP | Tiga pendekatan Panduan Pembelajaran & Asesmen 2025 — deskripsi kriteria, rubrik, interval nilai — dipilih umum atau per TP |
 | 13 | Jurnal Mengajar | Catatan per pertemuan; bisa diisi dari Program Semester |
-| 14 | Daftar Nilai | Per rombel: nilai TP, ASTS, ASAS/ASAT, nilai akhir & ketuntasan |
+| 14 | Daftar Nilai | Per rombel: nilai TP, ASTS, ASAS/ASAT, nilai akhir & ketuntasan; nilai TP di bawah batas KKTP ditandai * |
 | 15 | Bundel Lengkap | Dokumen 1–12 untuk semua kelas yang diampu, berurutan |
 
 Dokumen 8–14 mengikuti **kelas aktif** (tombol VII/VIII/IX di menu kiri); Jurnal dan Daftar Nilai juga mengikuti

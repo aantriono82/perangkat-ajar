@@ -87,6 +87,42 @@ async function download(page, trigger) {
     const nm = await page.evaluate(() => { openSection('modul'); addModul(); return modulUntuk('IX').length; });
     ok(nm === 2, 'Modul baru dari ATP');
 
+    console.log('5b. KKTP: tiga pendekatan (Panduan Pembelajaran dan Asesmen 2025)');
+    const kk = await page.evaluate(() => {
+        setTingkat('IX'); openSection('kktp'); setDocMode('kktp');
+        const txt = () => document.getElementById('sheets-container').textContent;
+        const r = {};
+        r.contoh = kktpPendekatan('A.7') === 'rubrik' && kktpPendekatan('G.5') === 'deskripsi' && kktpPendekatan('P.1') === 'interval';
+        r.dok = ['Belum Tercapai', 'Aspek yang Dinilai', 'Skala Pencapaian', 'minimal 2 dari 2 kriteria', 'aspek 1–3 minimal tahap Memahami, dan aspek 4 minimal tahap Mulai memahami', '81 – 100'].filter(s => !txt().includes(s));
+        setKktpPendekatanTp('P.1', 'deskripsi');
+        r.override = kktpPendekatan('P.1') === 'deskripsi' && !!document.querySelector('#ed-kktp input[oninput^="setKktpMin"][data-kode="P.1"]');
+        setKktpPendekatanTp('P.1', '');
+        setKktpPendekatanUmum('rubrik');
+        r.umum = kktpPendekatan('P.1') === 'rubrik' && kktpPendekatan('G.5') === 'deskripsi';
+        setKktpPendekatanUmum('interval');
+        const lama = sanitizeLoadedState({ kktp: { batas: 70, interval: [{ min: 0, max: 69, keterangan: 'Belum' }, { min: 70, max: 100, keterangan: 'Tuntas' }], indikator: {} } });
+        r.lama = lama.kktp.batas === 70 && Object.keys(lama.kktp.tp).length === 0 && lama.kktp.pendekatan === 'interval' && lama.kktp.level.length === 3;
+        const rusak = sanitizeLoadedState({ kktp: { pendekatan: 'x', level: ['a'], tp: { 'A.7': { pendekatan: 'y', minKriteria: 'z', rubrik: 5 }, __proto__: { a: 1 } } } });
+        r.rusak = rusak.kktp.pendekatan === 'interval' && rusak.kktp.level.length === 3 && JSON.stringify(rusak.kktp.tp['A.7']) === '{}';
+        return r;
+    });
+    ok(kk.contoh, 'Contoh: A.7 rubrik, G.5 deskripsi kriteria, lainnya interval');
+    ok(kk.dok.length === 0, 'Dokumen KKTP memuat tabel ketiga pendekatan', kk.dok.join(' | '));
+    ok(kk.override && kk.umum, 'Pendekatan umum & per TP');
+    ok(kk.lama, 'Data lama tetap memakai interval & batasnya');
+    ok(kk.rusak, 'Data KKTP tidak sah dibersihkan');
+    const bintang = await page.evaluate(() => {
+        const rb = appState.rombel.find(r => r.tingkat === 'IX'); const m = rb.murid[0];
+        const box = appState.nilai[nilaiKey(rb.id, 1)] || (appState.nilai[nilaiKey(rb.id, 1)] = {});
+        const keep = JSON.stringify(box[m.id] || {});
+        box[m.id] = Object.assign({}, box[m.id], { 'A.7': 50 });
+        setSemester(1); setDocMode('nilai');
+        const has = document.getElementById('sheets-container').textContent.includes('50*');
+        box[m.id] = JSON.parse(keep); renderAll();
+        return has;
+    });
+    ok(bintang, 'Daftar Nilai menandai (*) TP yang belum tercapai');
+
     console.log('6. Ekspor');
     await page.evaluate(() => setDocMode('tp'));
     const docx = await download(page, () => exportWord());

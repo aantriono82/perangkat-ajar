@@ -682,26 +682,114 @@ function removePertemuan(i, j) {
 }
 
 // ---------- KKTP ----------
+// Pendekatan (Panduan Pembelajaran dan Asesmen Edisi Revisi 2025): deskripsi kriteria, rubrik, interval nilai
 function renderKKTPEditor() {
     const t = appState.tingkat;
     const k = appState.kktp;
     const list = tpForTingkat(t);
+    const levels = kktpLevels(), skala = kktpSkala();
+    const umum = kktpPendekatan('');
+    const optList = (pairs, cur) => pairs.map(([v, l]) => `<option value="${ea(v)}" ${v === cur ? 'selected' : ''}>${ea(l)}</option>`).join('');
+    const listEditor = (key, arr, min, max, label) => `<table class="ed-table"><tbody>
+        ${arr.map((_, i) => `<tr><td style="width:28px;text-align:center" class="font-bold">${i + 1}</td><td>${inp(`kktp.${key}.${i}`, { cls: 'inp-sm', attrs: 'onchange="renderKKTPEditor()"' })}</td><td style="width:28px">${arr.length > min ? `<button class="btn-icon danger" title="Hapus" onclick="removeKktpList('${key}', ${i})">${icon('x')}</button>` : ''}</td></tr>`).join('')}
+        </tbody></table>${arr.length < max ? `<button class="btn" onclick="addKktpList('${key}')">${icon('plus')} ${label}</button>` : ''}`;
+
+    const tpCard = x => {
+        const conf = kktpTp(x.kode);
+        const p = kktpPendekatan(x.kode);
+        const krit = kktpKriteria(x);
+        const kd = ea(x.kode);
+        let detail = '';
+        if (p === 'deskripsi') {
+            detail = `<div class="flex items-center gap-1.5 text-xs">Tercapai bila minimal
+                <input class="inp inp-sm inp-num" type="number" min="1" max="${krit.length}" style="width:60px" data-kode="${kd}" value="${kktpMinKriteria(x.kode, krit.length)}" oninput="setKktpMin(this.dataset.kode, this.value)">
+                dari ${krit.length} kriteria tercapai.</div>`;
+        } else if (p === 'rubrik') {
+            detail = krit.map((asp, a) => `<div class="rounded-lg border border-slate-200 p-2 space-y-1.5">
+                    <div class="flex items-center gap-1.5"><span class="text-xs font-bold flex-1">Aspek ${a + 1}: ${ea(asp)}</span>
+                        <span class="hint shrink-0">minimal</span><select class="inp inp-sm" style="width:auto" data-kode="${kd}" onchange="setRubrikMin(this.dataset.kode, ${a}, this.value)">${optList(levels.map((l, i) => [String(i), l]), String(kktpMinLevel(x.kode, a, levels.length)))}</select></div>
+                    ${levels.map((l, li) => `<div><label class="field-label">${ea(l)}</label><textarea class="inp inp-sm" rows="2" data-kode="${kd}" placeholder="${ea(rubrikDefault(asp, li, levels.length))}" oninput="setRubrikDesc(this.dataset.kode, ${a}, ${li}, this.value)">${ea(((conf.rubrik || [])[a] || [])[li] || '')}</textarea></div>`).join('')}
+                </div>`).join('') + `<p class="hint">Aspek = baris di atas. Deskripsi yang dikosongkan memakai rumusan otomatis (teks abu-abu).</p>`;
+        } else {
+            detail = `<p class="hint">Setiap kriteria diberi skor 1–${skala.length}. Nilai = jumlah skor ÷ (${krit.length} × ${skala.length}) × 100; tercapai bila nilai ≥ ${ea(kktpBatas())}.</p>`;
+        }
+        return `<div class="border-t border-slate-100 pt-2 space-y-1.5">
+            <div class="text-xs font-bold">${kd} <span class="font-normal text-slate-500">— Smt ${x.semester}: ${ea(String(x.tujuan).slice(0, 110))}${String(x.tujuan).length > 110 ? '…' : ''}</span></div>
+            <div class="flex items-center gap-1.5 text-xs"><span class="shrink-0">Pendekatan</span>
+                <select class="inp inp-sm flex-1" data-kode="${kd}" onchange="setKktpPendekatanTp(this.dataset.kode, this.value)">${optList([['', `Ikuti pilihan umum (${PENDEKATAN_KKTP[umum]})`]].concat(Object.entries(PENDEKATAN_KKTP)), conf.pendekatan && PENDEKATAN_KKTP[conf.pendekatan] ? conf.pendekatan : '')}</select></div>
+            <label class="field-label">${p === 'rubrik' ? 'Aspek yang dinilai' : 'Kriteria ketercapaian'} (satu per baris)</label>
+            <textarea class="inp" rows="3" data-kode="${kd}" placeholder="${ea(`Murid mampu ${lcFirst(x.tujuan || x.materi)}`)}" data-n="${krit.length}" oninput="setIndikator(this.dataset.kode, this.value)" onchange="kktpKriteriaChanged(this)">${ea(k.indikator[x.kode] || '')}</textarea>
+            ${detail}</div>`;
+    };
+
     mount('ed-kktp', `
-        <div class="card space-y-2"><div class="card-title">${icon('gauge', 'w-4 h-4 accent-text')} Interval nilai</div>
-            ${lbl('Batas tuntas (nilai ≥)', inp('kktp.batas', { type: 'number', number: true, cls: 'inp-sm', attrs: 'style="width:90px"' }))}
-            <table class="ed-table"><thead><tr><th style="width:56px">Min</th><th style="width:56px">Maks</th><th>Keterangan / tindak lanjut</th><th style="width:28px"></th></tr></thead><tbody>
-            ${k.interval.map((iv, i) => `<tr><td>${inp(`kktp.interval.${i}.min`, { cls: 'inp-sm inp-num', type: 'number', number: true })}</td><td>${inp(`kktp.interval.${i}.max`, { cls: 'inp-sm inp-num', type: 'number', number: true })}</td><td>${inp(`kktp.interval.${i}.keterangan`, { cls: 'inp-sm' })}</td><td><button class="btn-icon danger" onclick="removeInterval(${i})">${icon('x')}</button></td></tr>`).join('')}
-            </tbody></table><button class="btn" onclick="addInterval()">${icon('plus')} Interval</button>
+        <div class="card space-y-2"><div class="card-title">${icon('gauge', 'w-4 h-4 accent-text')} Pendekatan KKTP</div>
+            <p class="hint">Mengacu pada Panduan Pembelajaran dan Asesmen Edisi Revisi 2025: <b>Deskripsi kriteria</b> (kriteria dicentang tercapai/belum, tuntas bila minimal sekian kriteria tercapai), <b>Rubrik</b> (deskripsi per tahap untuk setiap aspek, tuntas bila tiap aspek mencapai tahap minimal), dan <b>Interval nilai</b> (skor per kriteria diolah menjadi nilai 0–100, lalu dibaca dengan interval).</p>
+            ${lbl('Pendekatan umum (dipakai TP yang tidak diatur sendiri)', `<select class="inp" onchange="setKktpPendekatanUmum(this.value)">${optList(Object.entries(PENDEKATAN_KKTP), umum)}</select>`)}
         </div>
-        <div class="card space-y-2"><div class="card-title">Indikator per TP — kelas ${t}</div>
-            <p class="hint">Daftar TP mengikuti kode TP di ATP kelas ${t}. Satu indikator per baris; bila kosong, dokumen memakai rumusan TP.</p>
-            ${list.map(x => `<div class="border-t border-slate-100 pt-2"><div class="text-xs font-bold">${ea(x.kode)} <span class="font-normal text-slate-500">— Smt ${x.semester}: ${ea(String(x.tujuan).slice(0, 110))}${String(x.tujuan).length > 110 ? '…' : ''}</span></div>
-                <textarea class="inp mt-1" rows="3" data-kode="${ea(x.kode)}" oninput="setIndikator(this.dataset.kode, this.value)">${ea(k.indikator[x.kode] || '')}</textarea></div>`).join('') || '<p class="hint">Isi kode TP pada ATP terlebih dahulu.</p>'}
+        <div class="card space-y-2"><div class="card-title">Tahap pencapaian rubrik</div>
+            <p class="hint">2–5 tahap, dari terendah ke tertinggi. Contoh lain: Baru berkembang, Layak, Cakap, Mahir.</p>
+            ${listEditor('level', k.level, 2, 5, 'Tahap')}
+        </div>
+        <div class="card space-y-2"><div class="card-title">Skala & interval nilai</div>
+            <p class="hint">Skala pencapaian per kriteria (skor 1, 2, …) untuk pendekatan interval nilai.</p>
+            ${listEditor('skala', k.skala, 2, 6, 'Skala')}
+            ${lbl('Sudah mencapai tujuan pembelajaran bila nilai ≥', inp('kktp.batas', { type: 'number', number: true, cls: 'inp-sm', attrs: 'style="width:90px" onchange="renderKKTPEditor()"' }))}
+            <table class="ed-table"><thead><tr><th style="width:56px">Min</th><th style="width:56px">Maks</th><th>Ketercapaian & tindak lanjut</th><th style="width:28px"></th></tr></thead><tbody>
+            ${k.interval.map((iv, i) => `<tr><td>${inp(`kktp.interval.${i}.min`, { cls: 'inp-sm inp-num', type: 'number', number: true })}</td><td>${inp(`kktp.interval.${i}.max`, { cls: 'inp-sm inp-num', type: 'number', number: true })}</td><td>${inp(`kktp.interval.${i}.keterangan`, { cls: 'inp-sm' })}</td><td><button class="btn-icon danger" onclick="removeInterval(${i})">${icon('x')}</button></td></tr>`).join('')}
+            </tbody></table><div class="flex gap-1.5"><button class="btn" onclick="addInterval()">${icon('plus')} Interval</button><button class="btn" onclick="resetInterval()">${icon('rotate-ccw')} Interval panduan 2025</button></div>
+        </div>
+        <div class="card space-y-2"><div class="card-title">Kriteria per TP — kelas ${t}</div>
+            <p class="hint">Daftar TP mengikuti kode TP di ATP kelas ${t}. Bila kriteria kosong, dokumen memakai rumusan TP.</p>
+            ${list.map(tpCard).join('') || '<p class="hint">Isi kode TP pada ATP terlebih dahulu.</p>'}
         </div>`);
 }
+function kktpTpBox(kode) {
+    if (kode === '__proto__' || kode === 'constructor' || kode === 'prototype') return {};
+    const m = appState.kktp.tp || (appState.kktp.tp = {});
+    return m[kode] || (m[kode] = {});
+}
+// Jumlah kriteria berubah → bangun ulang panel (minimal kriteria, baris rubrik)
+function kktpKriteriaChanged(el) {
+    const n = kktpKriteria({ kode: el.dataset.kode, tujuan: '-' }).length;
+    if (String(n) !== el.dataset.n) renderKKTPEditor();
+}
 function setIndikator(kode, v) { appState.kktp.indikator[kode] = v; renderSoon(); }
+function setKktpPendekatanUmum(v) { if (PENDEKATAN_KKTP[v]) appState.kktp.pendekatan = v; renderKKTPEditor(); renderAll(); }
+function setKktpPendekatanTp(kode, v) {
+    const b = kktpTpBox(kode);
+    if (PENDEKATAN_KKTP[v]) b.pendekatan = v; else delete b.pendekatan;
+    renderKKTPEditor(); renderAll();
+}
+function setKktpMin(kode, v) { const b = kktpTpBox(kode); if (v === '' || !(Number(v) >= 1)) delete b.minKriteria; else b.minKriteria = Math.round(Number(v)); renderSoon(); }
+function setRubrikDesc(kode, a, l, v) {
+    const b = kktpTpBox(kode);
+    if (!Array.isArray(b.rubrik)) b.rubrik = [];
+    for (let i = 0; i <= a; i++) if (!Array.isArray(b.rubrik[i])) b.rubrik[i] = [];
+    b.rubrik[a][l] = v;
+    renderSoon();
+}
+function setRubrikMin(kode, a, v) {
+    const b = kktpTpBox(kode);
+    const n = kktpKriteria({ kode, tujuan: '' }).length, nl = kktpLevels().length;
+    b.minLevel = Array.from({ length: Math.max(n, a + 1) }, (_, i) => (b.minLevel || [])[i] ?? kktpMinLevel(kode, i, nl));
+    b.minLevel[a] = Number(v);
+    renderAll();
+}
+function addKktpList(key) {
+    const arr = appState.kktp[key];
+    arr.push(key === 'level' ? 'Tahap ' + (arr.length + 1) : 'Skala ' + (arr.length + 1));
+    renderKKTPEditor(); renderAll();
+}
+function removeKktpList(key, i) { appState.kktp[key].splice(i, 1); renderKKTPEditor(); renderAll(); }
 function addInterval() { appState.kktp.interval.push({ min: 0, max: 0, keterangan: '' }); renderKKTPEditor(); renderAll(); }
 function removeInterval(i) { appState.kktp.interval.splice(i, 1); renderKKTPEditor(); renderAll(); }
+function resetInterval() {
+    if (!confirm('Ganti interval nilai dengan contoh Panduan Pembelajaran dan Asesmen 2025 (0–20, 21–40, 41–60, 61–80, 81–100) dan batas tercapai ≥ 61?')) return;
+    appState.kktp.interval = JSON.parse(JSON.stringify(DEFAULT_INTERVAL));
+    appState.kktp.batas = 61;
+    renderKKTPEditor(); renderAll();
+}
 
 // ---------- Jurnal ----------
 function renderJurnalEditor() {

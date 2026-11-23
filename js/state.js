@@ -87,7 +87,15 @@ function createDefaultState() {
         mingguOverride: {},
         modul,
         modulAktif: modul[0].id,
-        kktp: { batas: 66, interval: JSON.parse(JSON.stringify(DEFAULT_INTERVAL)), indikator: Object.assign({}, DEFAULT_INDIKATOR) },
+        kktp: {
+            pendekatan: 'interval',
+            batas: 61,
+            interval: JSON.parse(JSON.stringify(DEFAULT_INTERVAL)),
+            skala: DEFAULT_SKALA.slice(),
+            level: DEFAULT_LEVEL_RUBRIK.slice(),
+            indikator: Object.assign({}, DEFAULT_INDIKATOR),
+            tp: JSON.parse(JSON.stringify(DEFAULT_KKTP_TP))
+        },
         jurnal: [],
         jurnalKosong: 5,
         rombel,
@@ -175,10 +183,41 @@ function sanitizeLoadedState(raw) {
         });
     });
     out.mingguOverride = mo;
+    // Pengaturan KKTP per TP diambil apa adanya dari data (tidak digabung dengan contoh bawaan);
+    // data lama (sebelum ada pendekatan per TP) tetap memakai interval untuk semua TP
+    out.kktp.tp = isPlainObject(raw.kktp) && isPlainObject(raw.kktp.tp) ? raw.kktp.tp : {};
+    out.kktp = sanitizeKKTP(out.kktp, fresh.kktp);
     out.modul = out.modul.filter(isPlainObject).map(m => Object.assign({ id: uid('mod'), pertemuan: [], dimensi: [] }, m));
     out.zoom = 1;
     out.sidebarHidden = false;
     return out;
+}
+
+// KKTP: pendekatan sah, tahap rubrik 2–5, skala 2–6, pengaturan per TP berbentuk benar
+function sanitizeKKTP(k, def) {
+    const strList = (arr, min, max, fallback) => {
+        const xs = (Array.isArray(arr) ? arr : []).map(x => (typeof x === 'string' || typeof x === 'number') ? String(x).slice(0, 200) : '').slice(0, max);
+        return xs.length >= min ? xs : fallback.slice();
+    };
+    k.pendekatan = PENDEKATAN_KKTP[k.pendekatan] ? k.pendekatan : 'interval';
+    k.level = strList(k.level, 2, 5, def.level);
+    k.skala = strList(k.skala, 2, 6, def.skala);
+    k.interval = (Array.isArray(k.interval) ? k.interval : []).filter(isPlainObject)
+        .map(iv => ({ min: Number(iv.min) || 0, max: Number(iv.max) || 0, keterangan: typeof iv.keterangan === 'string' ? iv.keterangan : '' }));
+    if (!isPlainObject(k.indikator)) k.indikator = {};
+    const tp = {};
+    Object.keys(isPlainObject(k.tp) ? k.tp : {}).forEach(kode => {
+        const o = k.tp[kode];
+        if (!isPlainObject(o) || kode === '__proto__' || kode === 'constructor' || kode === 'prototype') return;
+        const c = {};
+        if (PENDEKATAN_KKTP[o.pendekatan]) c.pendekatan = o.pendekatan;
+        if (Number.isFinite(Number(o.minKriteria)) && o.minKriteria !== null && o.minKriteria !== '') c.minKriteria = Math.max(1, Math.round(Number(o.minKriteria)));
+        if (Array.isArray(o.minLevel)) c.minLevel = o.minLevel.map(x => Math.max(0, Math.min(4, Math.round(Number(x)) || 0)));
+        if (Array.isArray(o.rubrik)) c.rubrik = o.rubrik.map(r => (Array.isArray(r) ? r : []).map(x => typeof x === 'string' ? x : ''));
+        tp[kode] = c;
+    });
+    k.tp = tp;
+    return k;
 }
 
 function saveStateNow() {

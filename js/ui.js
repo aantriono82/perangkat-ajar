@@ -106,7 +106,7 @@ const SECTION_META = {
     kalender:  { icon: 'calendar-days', title: 'Kalender & Minggu Efektif', desc: 'Agenda libur/kegiatan & aturan minggu efektif', perKelas: true },
     promes:    { icon: 'table-2', title: 'Program Semester', desc: 'Sebaran JP per minggu (otomatis + koreksi)', perKelas: true },
     modul:     { icon: 'notebook-pen', title: 'Modul Ajar', desc: 'Format Pembelajaran Mendalam', perKelas: true },
-    kktp:      { icon: 'gauge', title: 'KKTP', desc: 'Interval nilai & indikator per TP', perKelas: true },
+    kktp:      { icon: 'gauge', title: 'KKTP', desc: 'Deskripsi kriteria, rubrik, atau interval nilai per TP', perKelas: true },
     jurnal:    { icon: 'notebook-tabs', title: 'Jurnal Mengajar', desc: 'Catatan pelaksanaan per pertemuan', perKelas: true },
     nilai:     { icon: 'sheet', title: 'Daftar Nilai', desc: 'Rombel, murid, nilai TP, ASTS, ASAS/ASAT', perKelas: true }
 };

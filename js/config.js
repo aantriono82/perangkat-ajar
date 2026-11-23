@@ -269,14 +269,46 @@ function defaultModul(atp) {
 }
 
 // ---------------------------------------------------------------------------
-// KKTP: interval nilai + indikator contoh untuk beberapa TP
+// KKTP — Panduan Pembelajaran dan Asesmen Edisi Revisi 2025 (BSKAP), hlm. 40–45:
+// tiga pendekatan: deskripsi kriteria, rubrik, interval nilai
 // ---------------------------------------------------------------------------
+const PENDEKATAN_KKTP = {
+    deskripsi: 'Deskripsi Kriteria',
+    rubrik: 'Rubrik',
+    interval: 'Interval Nilai'
+};
+// Interval contoh panduan 2025 (hlm. 44–45)
 const DEFAULT_INTERVAL = [
-    { min: 0, max: 40, keterangan: 'Belum mencapai ketuntasan, remedial di seluruh bagian' },
-    { min: 41, max: 65, keterangan: 'Belum mencapai ketuntasan, remedial di bagian yang diperlukan' },
-    { min: 66, max: 85, keterangan: 'Sudah mencapai ketuntasan, tidak perlu remedial' },
-    { min: 86, max: 100, keterangan: 'Sudah mencapai ketuntasan, perlu pengayaan atau tantangan lebih' }
+    { min: 0, max: 20, keterangan: 'Belum mencapai tujuan pembelajaran. Pendidik menanyakan kepada murid tantangan yang dihadapi; perlu remedial dengan mempelajari kembali seluruh kriteria.' },
+    { min: 21, max: 40, keterangan: 'Belum mencapai tujuan pembelajaran, perlu remedial dengan mempelajari kembali sebagian besar kriteria.' },
+    { min: 41, max: 60, keterangan: 'Hampir mencapai tujuan pembelajaran, perlu remedial dengan mempelajari kembali kriteria yang diperlukan.' },
+    { min: 61, max: 80, keterangan: 'Sudah mencapai tujuan pembelajaran.' },
+    { min: 81, max: 100, keterangan: 'Sudah mencapai tujuan pembelajaran, perlu tantangan lebih (pengayaan).' }
 ];
+// Skala pencapaian per kriteria untuk pendekatan interval (skor 1..n)
+const DEFAULT_SKALA = [
+    'Belum mampu',
+    'Mampu dengan banyak bantuan',
+    'Mampu dengan sedikit bantuan',
+    'Mampu secara mandiri',
+    'Mampu mandiri dan dapat menjelaskan atau menerapkan'
+];
+// Tahap pencapaian rubrik (contoh Matematika, Tabel 3.6)
+const DEFAULT_LEVEL_RUBRIK = ['Mulai memahami', 'Memahami', 'Sangat memahami'];
+// Pengaturan per TP: pendekatan (kosong = ikut pilihan umum), minimal kriteria, rubrik
+const DEFAULT_KKTP_TP = {
+    'G.5': { pendekatan: 'deskripsi', minKriteria: 2 },
+    'A.7': {
+        pendekatan: 'rubrik',
+        minLevel: [1, 1, 1, 0],
+        rubrik: [
+            ['Mengenali informasi pada masalah, tetapi kesulitan menyusun persamaan.', 'Memodelkan masalah kontekstual menjadi dua persamaan linear dua variabel dengan benar.', 'Memodelkan masalah kontekstual menjadi SPLDV dengan benar dan menjelaskan arti setiap variabel.'],
+            ['Menggambar grafik salah satu persamaan atau titik potongnya belum tepat.', 'Menggambar grafik kedua persamaan dan menentukan titik potongnya dengan benar.', 'Menentukan penyelesaian dengan grafik dan menjelaskan hubungan titik potong dengan penyelesaian.'],
+            ['Menyelesaikan SPLDV sederhana dengan bantuan atau jawaban akhir belum tepat.', 'Menyelesaikan SPLDV dengan substitusi atau eliminasi dengan langkah yang logis.', 'Menyelesaikan SPLDV dengan metode campuran secara efisien dan memeriksa kebenaran jawaban.'],
+            ['Menyebutkan nilai variabel tanpa mengaitkan dengan konteks.', 'Menafsirkan penyelesaian sesuai konteks masalah.', 'Menafsirkan penyelesaian sesuai konteks dan menilai kewajaran jawaban.']
+        ]
+    }
+};
 const DEFAULT_INDIKATOR = {
     'A.7': 'Memodelkan masalah kontekstual menjadi SPLDV.\nMenentukan penyelesaian SPLDV dengan metode grafik.\nMenentukan penyelesaian SPLDV dengan metode substitusi dan eliminasi.\nMenafsirkan penyelesaian SPLDV sesuai konteks masalah.',
     'G.5': 'Mengidentifikasi jaring-jaring prisma dan limas.\nMembuat bangun ruang dari jaring-jaringnya.',
