@@ -1,6 +1,6 @@
 // Service worker: menyimpan seluruh berkas aplikasi agar bisa dibuka & dipasang tanpa internet.
 // JANGAN edit CACHE_VERSION / PRECACHE manual — jalankan `npm run build:sw` setelah mengubah berkas apa pun.
-const CACHE_VERSION = '29ca5c56cf39';
+const CACHE_VERSION = '5504dbaf7a2a';
 const PRECACHE = [
     './',
     './index.html',

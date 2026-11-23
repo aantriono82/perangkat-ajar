@@ -628,7 +628,12 @@ function addModul() {
 }
 function duplicateModul() {
     const m = appState.modul.find(x => x.id === appState.modulAktif); if (!m) return;
-    const c = JSON.parse(JSON.stringify(m)); c.id = uid('mod'); c.pertemuanKe = String((parseInt(m.pertemuanKe, 10) || 1) + 1);
+    const c = JSON.parse(JSON.stringify(m)); c.id = uid('mod'); c.pertemuanKe = (() => {
+        const r = String(m.pertemuanKe || '').match(/^\s*(\d+)\s*(?:[–\-]\s*(\d+)\s*)?$/);
+        if (!r) return String((parseInt(m.pertemuanKe, 10) || 1) + 1);
+        const a = +r[1], b = r[2] ? +r[2] : a, n = Math.max(1, b - a + 1);
+        return n > 1 ? `${b + 1}–${b + n}` : String(b + 1);
+    })();
     appState.modul.push(c); appState.modulAktif = c.id; renderModulEditor(); renderAll();
 }
 function removeModul() {
@@ -652,8 +657,29 @@ function toggleDimensi(i, d, on) {
     m.dimensi = DIMENSI_PROFIL.filter(x => x === d ? on : (m.dimensi || []).includes(x));
     renderSoon();
 }
-function addPertemuan(i) { const m = appState.modul[i]; m.pertemuan.push({ judul: 'Pertemuan ' + (m.pertemuan.length + 1), awal: '', memahami: '', mengaplikasi: '', merefleksi: '', penutup: '' }); renderModulEditor(); renderAll(); }
-function removePertemuan(i, j) { appState.modul[i].pertemuan.splice(j, 1); renderModulEditor(); renderAll(); }
+// Selaraskan "Alokasi waktu" & "Pertemuan ke-" dengan jumlah blok pertemuan.
+// Hanya menyentuh isian berpola bawaan, sehingga teks yang ditulis guru sendiri tidak ditimpa.
+function syncModulPertemuan(m, oldN) {
+    const n = (m.pertemuan || []).length;
+    if (!n || n === oldN) return;
+    const a = String(m.alokasi || '').match(/^\s*(\d+)\s*[×x]\s*(\d+)\s*menit\s*\(\s*(\d+)\s*pertemuan\s*\)\s*$/i);
+    if (a) {
+        const tot = +a[1], lama = +a[3] || 1;
+        const per = tot % lama === 0 ? tot / lama : 0;
+        if (per) m.alokasi = `${per * n} × ${a[2]} menit (${n} pertemuan)`;
+    }
+    const k = String(m.pertemuanKe || '').match(/^\s*(\d+)\s*(?:[–\-]\s*\d+\s*)?$/);
+    if (k) { const s = +k[1]; m.pertemuanKe = n > 1 ? `${s}–${s + n - 1}` : String(s); }
+}
+function addPertemuan(i) {
+    const m = appState.modul[i]; const oldN = m.pertemuan.length;
+    m.pertemuan.push({ judul: 'Pertemuan ' + (oldN + 1), awal: '', memahami: '', mengaplikasi: '', merefleksi: '', penutup: '' });
+    syncModulPertemuan(m, oldN); renderModulEditor(); renderAll();
+}
+function removePertemuan(i, j) {
+    const m = appState.modul[i]; const oldN = m.pertemuan.length;
+    m.pertemuan.splice(j, 1); syncModulPertemuan(m, oldN); renderModulEditor(); renderAll();
+}
 
 // ---------- KKTP ----------
 function renderKKTPEditor() {
